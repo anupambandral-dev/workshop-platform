@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
-import type { Workshop, AppContextType, Session, Participant } from '../types';
+import type { Workshop, AppContextType, Session, Participant, SessionWithRecords } from '../types';
 import { LogoIcon } from '../components/Icons';
 
 const JoinSessionPage: React.FC = () => {
@@ -52,10 +52,10 @@ const JoinSessionPage: React.FC = () => {
             }
 
             // Mark attendance
-            const updatedRecords = session.participant_records.map(r => 
+            const updatedRecords = session.session_participant_records.map(r => 
                 r.participant_id === participant.id ? { ...r, attendance: 'present' as const } : r
             );
-            await updateSession({ ...session, participant_records: updatedRecords });
+            await updateSession({ ...session, session_participant_records: updatedRecords });
             
             sessionStorage.setItem('workshop_session_user', JSON.stringify({
                 id: participant.id,

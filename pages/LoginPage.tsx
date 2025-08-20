@@ -1,14 +1,12 @@
-import React, { useState, useContext } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AppContext } from '../App';
-import { AppContextType } from '../types';
+import { supabase } from '../services/supabase';
 import { LogoIcon } from '../components/Icons';
 
 const LoginPage: React.FC = () => {
-  const { login } = useContext(AppContext) as AppContextType;
   const navigate = useNavigate();
-  const [email, setEmail] = useState('manager@example.com');
-  const [password, setPassword] = useState('password');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
@@ -18,7 +16,8 @@ const LoginPage: React.FC = () => {
     setIsLoggingIn(true);
     
     try {
-        await login(email, password);
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
         navigate('/dashboard');
     } catch (err: any) {
         setError(err.message || 'An unknown error occurred');
@@ -83,10 +82,6 @@ const LoginPage: React.FC = () => {
             </button>
           </div>
         </form>
-         <div className="text-center text-sm text-gray-500 bg-primary-50 p-4 rounded-lg border border-primary-200">
-            <p className="font-semibold">Demo Login:</p>
-            <p>Use any email with "manager" in it and any password.</p>
-        </div>
       </div>
     </div>
   );

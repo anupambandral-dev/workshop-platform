@@ -1,4 +1,4 @@
-import React, { useState, useContext, useMemo } from 'react';
+import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
 import { AppContextType } from '../types';
@@ -21,6 +21,48 @@ const SessionDetailPage: React.FC = () => {
         const s = ws.sessions.find(s => s.id === sessionId);
         return { workshop: ws, session: s || null };
     }, [workshops, workshopId, sessionId]);
+
+    // State for the controlled form
+    const [formData, setFormData] = useState({
+        title: '',
+        date: '',
+        start_time: '',
+        end_time: '',
+    });
+    const [isSaving, setIsSaving] = useState(false);
+
+    useEffect(() => {
+        if (session) {
+            setFormData({
+                title: session.title,
+                date: session.date,
+                start_time: session.start_time,
+                end_time: session.end_time,
+            });
+            // Set initial active tab based on session status
+            setActiveTab(session.status === 'ended' ? 'attendance' : 'details');
+        }
+    }, [session]);
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { id, value } = e.target;
+        setFormData(prev => ({ ...prev, [id]: value }));
+    };
+
+    const handleSaveChanges = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!session) return;
+        setIsSaving(true);
+        try {
+            await updateSession({ ...session, ...formData });
+            alert('Session details saved successfully!');
+        } catch (error) {
+            console.error(error);
+            alert('Failed to save session details.');
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
     const handleGoLive = async () => {
         if (session) {
@@ -73,27 +115,29 @@ const SessionDetailPage: React.FC = () => {
                 {activeTab === 'details' && (
                     <div className="bg-white p-6 rounded-lg shadow-md border">
                         <h3 className="text-xl font-bold mb-4">Edit Session Details</h3>
-                        <form className="space-y-4">
+                        <form onSubmit={handleSaveChanges} className="space-y-4">
                             <div>
-                                <label htmlFor="sessionTitle" className="block text-sm font-medium text-gray-700">Session Title</label>
-                                <input type="text" id="sessionTitle" defaultValue={session.title} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
+                                <label htmlFor="title" className="block text-sm font-medium text-gray-700">Session Title</label>
+                                <input type="text" id="title" value={formData.title} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
                             </div>
                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
                                     <label htmlFor="date" className="block text-sm font-medium text-gray-700">Date</label>
-                                    <input type="date" id="date" defaultValue={session.date} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
+                                    <input type="date" id="date" value={formData.date} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
                                 </div>
                                 <div>
-                                    <label htmlFor="startTime" className="block text-sm font-medium text-gray-700">Start Time</label>
-                                    <input type="time" id="startTime" defaultValue={session.start_time} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
+                                    <label htmlFor="start_time" className="block text-sm font-medium text-gray-700">Start Time</label>
+                                    <input type="time" id="start_time" value={formData.start_time} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
                                 </div>
                                 <div>
-                                    <label htmlFor="endTime" className="block text-sm font-medium text-gray-700">End Time</label>
-                                    <input type="time" id="endTime" defaultValue={session.end_time} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
+                                    <label htmlFor="end_time" className="block text-sm font-medium text-gray-700">End Time</label>
+                                    <input type="time" id="end_time" value={formData.end_time} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
                                 </div>
                             </div>
                             <div className="flex justify-end">
-                                <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary-700">Save Changes</button>
+                                <button type="submit" disabled={isSaving} className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary-700 disabled:bg-primary-300">
+                                    {isSaving ? 'Saving...' : 'Save Changes'}
+                                </button>
                             </div>
                         </form>
                     </div>
@@ -112,7 +156,7 @@ const SessionDetailPage: React.FC = () => {
                         <h3 className="text-xl font-bold mb-4">Attendance Report</h3>
                          <ul className="divide-y">
                             {workshop.participants.map(p => {
-                                const record = session.participant_records.find(r => r.participant_id === p.id);
+                                const record = session.session_participant_records.find(r => r.participant_id === p.id);
                                 const isPresent = record?.attendance === 'present';
                                 return (
                                     <li key={p.id} className="p-3 flex items-center justify-between">

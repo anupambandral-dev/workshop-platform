@@ -1,12 +1,13 @@
 import React, { useState, useContext, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
-import type { AppContextType, Workshop, ChatMessage, Participant, Feedback, SessionUser, Evaluation, Host, Session } from '../types';
+import { supabase } from '../services/supabase';
+import type { AppContextType, Workshop, ChatMessage, Participant, Feedback, SessionUser, Evaluation, Host, SessionWithRecords } from '../types';
 import { UsersIcon, SendIcon, CheckCircleIcon } from '../components/Icons';
 
 // --- Helper Components ---
 
-const ChatPanel: React.FC<{ sessionId: string, chat: ChatMessage[], currentUser: SessionUser, onSend: (message: string) => void, isReadOnly?: boolean }> = ({ sessionId, chat, currentUser, onSend, isReadOnly = false }) => {
+const ChatPanel: React.FC<{ chat: ChatMessage[], currentUser: SessionUser, onSend: (message: string) => void, isReadOnly?: boolean }> = ({ chat, currentUser, onSend, isReadOnly = false }) => {
     const [message, setMessage] = useState('');
     const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -56,8 +57,8 @@ const ChatPanel: React.FC<{ sessionId: string, chat: ChatMessage[], currentUser:
     );
 };
 
-const ParticipantsPanel: React.FC<{ hosts: Host[], participants: Participant[], session: Session }> = ({ hosts, participants, session }) => {
-    const presentCount = session.participant_records.filter(r => r.attendance === 'present').length;
+const ParticipantsPanel: React.FC<{ hosts: Host[], participants: Participant[], session: SessionWithRecords }> = ({ hosts, participants, session }) => {
+    const presentCount = session.session_participant_records.filter(r => r.attendance === 'present').length;
     
     return (
         <div className="bg-white rounded-lg shadow-md">
@@ -72,7 +73,7 @@ const ParticipantsPanel: React.FC<{ hosts: Host[], participants: Participant[], 
                     </li>
                 ))}
                 {participants.map(p => {
-                    const record = session.participant_records.find(r => r.participant_id === p.id);
+                    const record = session.session_participant_records.find(r => r.participant_id === p.id);
                     const isPresent = record?.attendance === 'present';
                     return (
                         <li key={p.id} className="p-3 flex items-center justify-between">
@@ -178,7 +179,7 @@ const EvaluationModal: React.FC<{
     );
 };
 
-const EvaluationPanel: React.FC<{ workshop: Workshop, session: Session, onSaveEvaluation: (participantId: string, evaluation: Evaluation) => void }> = ({ workshop, session, onSaveEvaluation }) => {
+const EvaluationPanel: React.FC<{ workshop: Workshop, session: SessionWithRecords, onSaveEvaluation: (participantId: string, evaluation: Evaluation) => void }> = ({ workshop, session, onSaveEvaluation }) => {
     const [selectedParticipant, setSelectedParticipant] = useState<Participant | null>(null);
 
     const handleSave = (participantId: string, evaluation: Evaluation) => {
@@ -192,8 +193,8 @@ const EvaluationPanel: React.FC<{ workshop: Workshop, session: Session, onSaveEv
             <p className="mt-1 text-gray-600">Click on a participant to submit their evaluation. Evaluated participants will have a green checkmark.</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-6">
                 {workshop.participants.map(p => {
-                    const record = session.participant_records.find(r => r.participant_id === p.id);
-                    const evaluation = record?.evaluation || null;
+                    const record = session.session_participant_records.find(r => r.participant_id === p.id);
+                    const evaluation = record?.evaluation as Evaluation | null;
                     return (
                         <button key={p.id} onClick={() => setSelectedParticipant(p)} className={`p-4 text-left border rounded-lg flex items-center justify-between transition-all ${evaluation ? 'border-green-300 bg-green-50 hover:bg-green-100' : 'border-gray-300 bg-white hover:bg-gray-50'}`} aria-label={`Evaluate ${p.name}`}>
                             <div>
@@ -207,7 +208,7 @@ const EvaluationPanel: React.FC<{ workshop: Workshop, session: Session, onSaveEv
             </div>
             {selectedParticipant && <EvaluationModal 
                 participant={selectedParticipant} 
-                evaluation={session.participant_records.find(r => r.participant_id === selectedParticipant.id)?.evaluation || null}
+                evaluation={session.session_participant_records.find(r => r.participant_id === selectedParticipant.id)?.evaluation as Evaluation | null}
                 onClose={() => setSelectedParticipant(null)} 
                 onSubmit={handleSave} 
             />}
@@ -228,14 +229,10 @@ const LiveSessionPage: React.FC = () => {
     const [pageState, setPageState] = useState<'loading' | 'live' | 'feedback' | 'ended' | 'error'>('loading');
 
     const { workshop, session } = useMemo(() => {
-        if (!sessionId || workshops.length === 0) {
-            return { workshop: null, session: null };
-        }
+        if (!sessionId || workshops.length === 0) return { workshop: null, session: null };
         for (const ws of workshops) {
             const s = ws.sessions.find(s => s.id === sessionId);
-            if (s) {
-                return { workshop: ws, session: s };
-            }
+            if (s) return { workshop: ws, session: s };
         }
         return { workshop: null, session: null };
     }, [sessionId, workshops]);
@@ -264,7 +261,7 @@ const LiveSessionPage: React.FC = () => {
 
             if (session.status === 'ended') {
                 if (!hostCheck) { // I'm a participant
-                    const myRecord = session.participant_records.find(r => r.participant_id === sessionUser!.id);
+                    const myRecord = session.session_participant_records.find(r => r.participant_id === sessionUser!.id);
                     if (myRecord && !myRecord.feedback) setPageState('feedback');
                     else setPageState('ended');
                 } else { // I'm a host/manager
@@ -273,60 +270,67 @@ const LiveSessionPage: React.FC = () => {
             } else if (session.status === 'live' || session.status === 'scheduled') {
                 setPageState('live');
             }
-
-            // Load chat from session storage
-            const storedChat = sessionStorage.getItem(`chat_${sessionId}`);
-            if(storedChat) setChatMessages(JSON.parse(storedChat));
         }
     }, [sessionId, workshops, workshop, session, navigate]);
+    
+    // Realtime chat subscription
+    useEffect(() => {
+        if (!session) return;
+        
+        const fetchChat = async () => {
+            const { data, error } = await supabase.from('chat_messages').select('*').eq('session_id', session.id).order('created_at');
+            if (error) console.error("Error fetching chat:", error);
+            else setChatMessages(data as ChatMessage[]);
+        };
+        fetchChat();
+
+        const channel = supabase.channel(`chat_${session.id}`)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `session_id=eq.${session.id}` },
+                (payload) => {
+                    setChatMessages(currentMessages => [...currentMessages, payload.new as ChatMessage]);
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [session]);
+
 
     const handleEndSession = async () => {
         if (!session) return;
-        
         await updateSession({ ...session, status: 'ended' });
-        
-        // As the host, change view to feedback or ended state
-        const myRecord = session.participant_records.find(r => r.participant_id === currentUser!.id);
-        if (!isHost && myRecord && !myRecord.feedback) {
-             setPageState('feedback');
-        } else {
-             setPageState('ended');
-        }
     };
 
-    const handleSendMessage = (message: string) => {
+    const handleSendMessage = async (message: string) => {
         if (!currentUser || !session) return;
-        const newMessage: ChatMessage = {
-            id: `msg_${Date.now()}`,
+        const newMessage = {
             session_id: session.id,
             sender_id: currentUser.id,
             sender_name: currentUser.name,
             message: message,
-            created_at: new Date().toISOString()
         };
-        const updatedChat = [...chatMessages, newMessage];
-        setChatMessages(updatedChat);
-        sessionStorage.setItem(`chat_${session.id}`, JSON.stringify(updatedChat));
+        const { error } = await supabase.from('chat_messages').insert(newMessage);
+        if (error) console.error("Error sending message:", error);
     };
 
     const handleSubmitFeedback = async (feedback: Feedback) => {
         if (!session || !currentUser) return;
-        const myRecordIndex = session.participant_records.findIndex(p => p.participant_id === currentUser.id);
-        if (myRecordIndex > -1) {
-            const updatedRecords = [...session.participant_records];
-            updatedRecords[myRecordIndex] = { ...updatedRecords[myRecordIndex], feedback };
-            await updateSession({ ...session, participant_records: updatedRecords });
+        const myRecord = session.session_participant_records.find(p => p.participant_id === currentUser.id);
+        if (myRecord) {
+            myRecord.feedback = feedback;
+            await updateSession(session);
             setPageState('ended');
         }
     };
 
     const handleSaveEvaluation = async (participantId: string, evaluation: Evaluation) => {
         if (!session) return;
-        const recordIndex = session.participant_records.findIndex(r => r.participant_id === participantId);
-        if(recordIndex > -1) {
-            const updatedRecords = [...session.participant_records];
-            updatedRecords[recordIndex] = { ...updatedRecords[recordIndex], evaluation };
-            await updateSession({ ...session, participant_records: updatedRecords });
+        const record = session.session_participant_records.find(r => r.participant_id === participantId);
+        if(record) {
+            record.evaluation = evaluation;
+            await updateSession(session);
         }
     };
 
@@ -346,7 +350,7 @@ const LiveSessionPage: React.FC = () => {
                     </div>
                     <EvaluationPanel workshop={workshop} session={session} onSaveEvaluation={handleSaveEvaluation} />
                      <div className="max-w-4xl mx-auto mt-12 h-[70vh]">
-                        {currentUser && <ChatPanel sessionId={session.id} chat={chatMessages} currentUser={currentUser} onSend={() => {}} isReadOnly={true} />}
+                        {currentUser && <ChatPanel chat={chatMessages} currentUser={currentUser} onSend={() => {}} isReadOnly={true} />}
                     </div>
                 </div>
             );
@@ -376,7 +380,7 @@ const LiveSessionPage: React.FC = () => {
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-220px)]">
                 <div className="lg:col-span-2 h-full">
-                    {currentUser && <ChatPanel sessionId={session.id} chat={chatMessages} currentUser={currentUser} onSend={handleSendMessage} />}
+                    {currentUser && <ChatPanel chat={chatMessages} currentUser={currentUser} onSend={handleSendMessage} />}
                 </div>
                 <div className="h-full">
                     <ParticipantsPanel hosts={workshop.hosts} participants={workshop.participants} session={session} />
