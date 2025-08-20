@@ -1,0 +1,5 @@
+{
+  "name": "Workshop Automation Platform",
+  "description": "A web application for training managers to create, manage, and conduct workshops. It automates attendance, feedback collection, and participant evaluation, providing a streamlined experience for both hosts and attendees.",
+  "requestFramePermissions": []
+}
