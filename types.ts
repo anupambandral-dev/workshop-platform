@@ -1,181 +1,26 @@
-// This file is a placeholder for the generated Supabase types.
-// You would typically generate this file using:
-// npx supabase gen types typescript --project-id <your-project-id> > types.ts
+// Custom client-side types for the mock application
 
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[]
-
-export interface Database {
-  public: {
-    Tables: {
-      chat_messages: {
-        Row: {
-          created_at: string
-          id: string
-          message: string
-          sender_id: string
-          sender_name: string
-          workshop_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          message: string
-          sender_id: string
-          sender_name: string
-          workshop_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          message?: string
-          sender_id?: string
-          sender_name?: string
-          workshop_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "chat_messages_workshop_id_fkey"
-            columns: ["workshop_id"]
-            referencedRelation: "workshops"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      hosts: {
-        Row: {
-          email: string
-          id: string
-          name: string
-          workshop_id: string
-        }
-        Insert: {
-          email: string
-          id?: string
-          name: string
-          workshop_id: string
-        }
-        Update: {
-          email?: string
-          id?: string
-          name?: string
-          workshop_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "hosts_workshop_id_fkey"
-            columns: ["workshop_id"]
-            referencedRelation: "workshops"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      participants: {
-        Row: {
-          attendance: string
-          email: string
-          evaluation: Json | null
-          feedback: Json | null
-          id: string
-          name: string
-          workshop_id: string
-        }
-        Insert: {
-          attendance?: string
-          email: string
-          evaluation?: Json | null
-          feedback?: Json | null
-          id?: string
-          name: string
-          workshop_id: string
-        }
-        Update: {
-          attendance?: string
-          email?: string
-          evaluation?: Json | null
-          feedback?: Json | null
-          id?: string
-          name?: string
-          workshop_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "participants_workshop_id_fkey"
-            columns: ["workshop_id"]
-            referencedRelation: "workshops"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      workshops: {
-        Row: {
-          created_at: string
-          date: string
-          end_time: string
-          id: string
-          manager_id: string | null
-          start_time: string
-          status: string
-          title: string
-        }
-        Insert: {
-          created_at?: string
-          date: string
-          end_time: string
-          id?: string
-          manager_id?: string | null
-          start_time: string
-          status?: string
-          title: string
-        }
-        Update: {
-          created_at?: string
-          date?: string
-          end_time?: string
-          id?: string
-          manager_id?: string | null
-          start_time?: string
-          status?: string
-          title?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "workshops_manager_id_fkey"
-            columns: ["manager_id"]
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      [_ in never]: never
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
-}
-
-// Custom client-side types combining Supabase types for convenience
-export type Host = Database['public']['Tables']['hosts']['Row'];
-export type Participant = Database['public']['Tables']['participants']['Row'];
-export type ChatMessage = Database['public']['Tables']['chat_messages']['Row'];
-export type Workshop = Database['public']['Tables']['workshops']['Row'] & {
-  hosts: Host[];
-  participants: Participant[];
+export type Host = {
+  id: string;
+  name: string;
+  email: string;
 };
+
+export type Participant = {
+  id: string;
+  name: string;
+  email: string;
+};
+
+export type ChatMessage = {
+  id: string;
+  session_id: string; // Changed from workshop_id
+  sender_id: string;
+  sender_name: string;
+  message: string;
+  created_at: string;
+};
+
 export type Feedback = {
   interactive: number;
   helpful: number;
@@ -188,6 +33,33 @@ export type Evaluation = {
   overall: number;
 };
 
+export type SessionParticipantRecord = {
+  participant_id: string;
+  attendance: 'pending' | 'present';
+  feedback: Feedback | null;
+  evaluation: Evaluation | null;
+}
+
+export type Session = {
+  id: string;
+  workshop_id: string;
+  session_number: number;
+  title: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  status: 'scheduled' | 'live' | 'ended';
+  participant_records: SessionParticipantRecord[];
+};
+
+export type Workshop = {
+  id: string;
+  title: string;
+  hosts: Host[];
+  participants: Participant[];
+  sessions: Session[];
+};
+
 // Simplified user type for client-side state
 export interface SessionUser {
   id: string;
@@ -198,11 +70,140 @@ export interface SessionUser {
 
 // AppContext type
 export interface AppContextType {
-  session: import('@supabase/supabase-js').Session | null;
   user: SessionUser | null;
   workshops: Workshop[];
   isLoading: boolean;
-  addWorkshop: (workshopData: Omit<Database['public']['Tables']['workshops']['Insert'], 'id' | 'created_at' | 'manager_id' | 'status'>, hosts: Omit<Database['public']['Tables']['hosts']['Insert'], 'id' | 'workshop_id'>[], participants: Omit<Database['public']['Tables']['participants']['Insert'], 'id' | 'workshop_id' | 'attendance' | 'feedback' | 'evaluation'>[]) => Promise<void>;
+  login: (email: string, pass: string) => Promise<void>;
+  logout: () => void;
+  addWorkshop: (
+    workshopData: { title: string; total_sessions: number; weekday: string; time: string },
+    hosts: Omit<Host, 'id'>[], 
+    participants: Omit<Participant, 'id'>[]
+  ) => Promise<void>;
   updateWorkshop: (workshop: Workshop) => Promise<void>;
-  updateParticipant: (participant: Participant) => Promise<void>;
+  updateSession: (session: Session) => Promise<void>;
+}
+
+// Placeholder types for Supabase to fix compilation error.
+// In a real project, these would be generated by `supabase gen types typescript`.
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
+
+export interface Database {
+  public: {
+    Tables: {
+      workshops: {
+        Row: {
+          id: string;
+          title: string;
+          date: string;
+          start_time: string;
+          end_time: string;
+          status: "scheduled" | "live" | "ended";
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          date: string;
+          start_time: string;
+          end_time: string;
+          status?: "scheduled" | "live" | "ended";
+        };
+        Update: {
+          id?: string;
+          title?: string;
+          date?: string;
+          start_time?: string;
+          end_time?: string;
+          status?: "scheduled" | "live" | "ended";
+        };
+      };
+      hosts: {
+        Row: {
+          id: string;
+          workshop_id: string;
+          name: string;
+          email: string;
+        };
+        Insert: {
+          id?: string;
+          workshop_id: string;
+          name: string;
+          email: string;
+        };
+        Update: {
+          id?: string;
+          workshop_id?: string;
+          name?: string;
+          email?: string;
+        };
+      };
+      participants: {
+        Row: {
+          id: string;
+          workshop_id: string;
+          name: string;
+          email: string;
+          attendance: "pending" | "present";
+          feedback: Json | null;
+          evaluation: Json | null;
+        };
+        Insert: {
+          id?: string;
+          workshop_id: string;
+          name: string;
+          email: string;
+          attendance?: "pending" | "present";
+          feedback?: Json | null;
+          evaluation?: Json | null;
+        };
+        Update: {
+          id?: string;
+          workshop_id?: string;
+          name?: string;
+          email?: string;
+          attendance?: "pending" | "present";
+          feedback?: Json | null;
+          evaluation?: Json | null;
+        };
+      };
+      chat_messages: {
+        Row: {
+          id: string;
+          workshop_id: string;
+          sender_id: string;
+          sender_name: string;
+          message: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          workshop_id: string;
+          sender_id: string;
+          sender_name: string;
+          message: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          workshop_id?: string;
+          sender_id?: string;
+          sender_name?: string;
+          message?: string;
+          created_at?: string;
+        };
+      };
+    };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      [_ in never]: never;
+    };
+  };
 }

@@ -1,137 +1,89 @@
 import React, { useState, useMemo, useCallback, useEffect, createContext } from 'react';
 import { HashRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
-import type { Session } from '@supabase/supabase-js';
-import { supabase } from './services/supabase';
-import type { AppContextType, Workshop, SessionUser, Host, Participant, Database } from './types';
+import { mockApi } from './services/mockApi';
+import type { AppContextType, Workshop, SessionUser, Session } from './types';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import JoinSessionPage from './pages/JoinSessionPage';
 import LiveSessionPage from './pages/LiveSessionPage';
+import WorkshopDetailPage from './pages/WorkshopDetailPage';
+import SessionDetailPage from './pages/SessionDetailPage';
 import { LogoIcon } from './components/Icons';
 
 export const AppContext = createContext<AppContextType | null>(null);
 
 const App: React.FC = () => {
-    const [session, setSession] = useState<Session | null>(null);
     const [user, setUser] = useState<SessionUser | null>(null);
     const [workshops, setWorkshops] = useState<Workshop[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        const fetchSession = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            setSession(session);
-            if (session) {
-                setUser({
-                    id: session.user.id,
-                    email: session.user.email!,
-                    name: session.user.user_metadata.full_name || 'Manager',
-                    role: 'manager'
-                });
+        const checkSession = async () => {
+            setIsLoading(true);
+            try {
+                const storedUser = sessionStorage.getItem('workshop_session_user');
+                if (storedUser) {
+                    setUser(JSON.parse(storedUser));
+                }
+            } catch (e) {
+                console.error("Failed to parse session user", e);
+                sessionStorage.removeItem('workshop_session_user');
             }
             setIsLoading(false);
         };
-        fetchSession();
-
-        const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session);
-            if (session) {
-                 setUser({
-                    id: session.user.id,
-                    email: session.user.email!,
-                    name: session.user.user_metadata.full_name || 'Manager',
-                    role: 'manager'
-                });
-            } else {
-                setUser(null);
-            }
-        });
-
-        return () => {
-            authListener.subscription.unsubscribe();
-        };
+        checkSession();
     }, []);
 
     const fetchWorkshops = useCallback(async () => {
-        if (!session) return;
-        const { data, error } = await supabase
-            .from('workshops')
-            .select('*, hosts(*), participants(*)')
-            .order('created_at', { ascending: false });
-
-        if (error) {
-            console.error('Error fetching workshops:', error);
-        } else {
-            setWorkshops((data as Workshop[]) || []);
-        }
-    }, [session]);
-
+        setIsLoading(true);
+        const data = await mockApi.getWorkshops();
+        setWorkshops(data);
+        setIsLoading(false);
+    }, []);
 
     useEffect(() => {
-        fetchWorkshops();
-    }, [fetchWorkshops]);
-
-    const addWorkshop = useCallback(async (
-        workshopData: Omit<Database['public']['Tables']['workshops']['Insert'], 'id' | 'created_at' | 'manager_id' | 'status'>,
-        hosts: Omit<Database['public']['Tables']['hosts']['Insert'], 'id' | 'workshop_id'>[],
-        participants: Omit<Database['public']['Tables']['participants']['Insert'], 'id' | 'workshop_id' | 'attendance' | 'feedback' | 'evaluation'>[]
-    ) => {
-        if (!user) throw new Error("User not authenticated");
-        
-        // 1. Insert workshop
-        const { data: newWorkshop, error: workshopError } = await supabase
-            .from('workshops')
-            .insert([{ ...workshopData, manager_id: user.id }])
-            .select()
-            .single();
-
-        if (workshopError || !newWorkshop) {
-            console.error("Error creating workshop:", workshopError);
-            return;
+        if (user) {
+            fetchWorkshops();
         }
-
-        const typedNewWorkshop = newWorkshop as Database['public']['Tables']['workshops']['Row'];
-
-        // 2. Insert hosts and participants
-        const hostsToInsert = hosts.map(h => ({ ...h, workshop_id: typedNewWorkshop.id }));
-        const participantsToInsert = participants.map(p => ({ ...p, workshop_id: typedNewWorkshop.id }));
-
-        const [{ error: hostsError }, { error: participantsError }] = await Promise.all([
-             supabase.from('hosts').insert(hostsToInsert as any),
-             supabase.from('participants').insert(participantsToInsert as any)
-        ]);
-
-        if (hostsError) console.error("Error creating hosts:", hostsError);
-        if (participantsError) console.error("Error creating participants:", participantsError);
-        
-        await fetchWorkshops(); // Refresh data
     }, [user, fetchWorkshops]);
+    
+    const login = useCallback(async (email: string, pass: string) => {
+        const loggedInUser = await mockApi.login(email, pass);
+        setUser(loggedInUser);
+    }, []);
 
-    const updateWorkshop = useCallback(async (updatedWorkshop: Workshop) => {
-        const { id, hosts, participants, ...workshopDetails } = updatedWorkshop;
-        const { error } = await supabase.from('workshops').update(workshopDetails as any).eq('id', id);
-        if (error) console.error("Error updating workshop:", error);
-        // Participants/hosts are updated separately
+    const logout = useCallback(() => {
+        mockApi.logout();
+        setUser(null);
+        setWorkshops([]);
+    }, []);
+
+    const addWorkshop: AppContextType['addWorkshop'] = useCallback(async (workshopData, hosts, participants) => {
+        await mockApi.addWorkshop(workshopData, hosts, participants);
         await fetchWorkshops();
     }, [fetchWorkshops]);
     
-    const updateParticipant = useCallback(async (updatedParticipant: Participant) => {
-        const { id, ...updateData } = updatedParticipant;
-        const { error } = await supabase.from('participants').update(updateData as any).eq('id', id);
-        if (error) console.error("Error updating participant:", error);
-        await fetchWorkshops();
+    const updateWorkshop = useCallback(async (updatedWorkshop: Workshop) => {
+        await mockApi.updateWorkshop(updatedWorkshop);
+        // Optimistically update local state for faster UI response
+        setWorkshops(prev => prev.map(ws => ws.id === updatedWorkshop.id ? updatedWorkshop : ws));
+    }, []);
+    
+    const updateSession = useCallback(async (updatedSession: Session) => {
+        await mockApi.updateSession(updatedSession);
+        await fetchWorkshops(); // Fetch all workshops to ensure consistency
     }, [fetchWorkshops]);
 
-
     const appContextValue = useMemo(() => ({
-        session,
         user,
         workshops,
         isLoading,
+        login,
+        logout,
         addWorkshop,
         updateWorkshop,
-        updateParticipant,
-    }), [session, user, workshops, isLoading, addWorkshop, updateWorkshop, updateParticipant]);
+        updateSession,
+    }), [user, workshops, isLoading, login, logout, addWorkshop, updateWorkshop, updateSession]);
 
     return (
         <AppContext.Provider value={appContextValue}>
@@ -146,7 +98,7 @@ const App: React.FC = () => {
                                 </Link>
                                 {user && (
                                     <button
-                                        onClick={() => supabase.auth.signOut()}
+                                        onClick={logout}
                                         className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
                                     >
                                         Logout
@@ -160,8 +112,10 @@ const App: React.FC = () => {
                             <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Navigate to="/login" />} />
                             <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <LoginPage />} />
                             <Route path="/dashboard" element={user ? <DashboardPage /> : <Navigate to="/login" />} />
-                            <Route path="/session/:workshopId/join" element={<JoinSessionPage />} />
-                            <Route path="/session/:workshopId/live" element={<LiveSessionPage />} />
+                            <Route path="/workshop/:workshopId" element={user ? <WorkshopDetailPage /> : <Navigate to="/login" />} />
+                            <Route path="/workshop/:workshopId/session/:sessionId" element={user ? <SessionDetailPage /> : <Navigate to="/login" />} />
+                            <Route path="/session/:sessionId/join" element={<JoinSessionPage />} />
+                            <Route path="/session/:sessionId/live" element={<LiveSessionPage />} />
                         </Routes>
                     </main>
                 </div>

@@ -1,13 +1,12 @@
-import React, { useState, useContext, useEffect, useRef } from 'react';
+import React, { useState, useContext, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
-import { supabase } from '../services/supabase';
-import type { AppContextType, Workshop, ChatMessage, Participant, Feedback, SessionUser, Evaluation, Host } from '../types';
+import type { AppContextType, Workshop, ChatMessage, Participant, Feedback, SessionUser, Evaluation, Host, Session } from '../types';
 import { UsersIcon, SendIcon, CheckCircleIcon } from '../components/Icons';
 
 // --- Helper Components ---
 
-const ChatPanel: React.FC<{ workshopId: string, chat: ChatMessage[], currentUser: SessionUser, isReadOnly?: boolean }> = ({ workshopId, chat, currentUser, isReadOnly = false }) => {
+const ChatPanel: React.FC<{ sessionId: string, chat: ChatMessage[], currentUser: SessionUser, onSend: (message: string) => void, isReadOnly?: boolean }> = ({ sessionId, chat, currentUser, onSend, isReadOnly = false }) => {
     const [message, setMessage] = useState('');
     const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -15,15 +14,10 @@ const ChatPanel: React.FC<{ workshopId: string, chat: ChatMessage[], currentUser
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [chat]);
 
-    const handleSend = async (e: React.FormEvent) => {
+    const handleSend = (e: React.FormEvent) => {
         e.preventDefault();
         if (message.trim()) {
-            await supabase.from('chat_messages').insert([{
-                workshop_id: workshopId,
-                sender_id: currentUser.id,
-                sender_name: currentUser.name,
-                message: message.trim(),
-            }]);
+            onSend(message.trim());
             setMessage('');
         }
     };
@@ -32,7 +26,7 @@ const ChatPanel: React.FC<{ workshopId: string, chat: ChatMessage[], currentUser
         <div className="flex flex-col h-full bg-white rounded-lg shadow-md">
             <h3 className="text-lg font-bold p-4 border-b">{isReadOnly ? 'Chat History' : 'Live Chat'}</h3>
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {chat.sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map((msg) => (
+                {chat.map((msg) => (
                     <div key={msg.id} className={`flex ${msg.sender_id === currentUser.id ? 'justify-end' : 'justify-start'}`}>
                         <div className={`p-3 rounded-lg max-w-xs lg:max-w-md ${msg.sender_id === currentUser.id ? 'bg-primary text-white' : 'bg-gray-200 text-gray-800'}`}>
                             <p className="font-bold text-sm">{msg.sender_name}</p>
@@ -62,33 +56,42 @@ const ChatPanel: React.FC<{ workshopId: string, chat: ChatMessage[], currentUser
     );
 };
 
-const ParticipantsPanel: React.FC<{ hosts: Host[], participants: Participant[] }> = ({ hosts, participants }) => (
-    <div className="bg-white rounded-lg shadow-md">
-        <h3 className="text-lg font-bold p-4 border-b flex items-center">
-            <UsersIcon className="h-6 w-6 mr-2" /> Participants ({participants.filter(p => p.attendance === 'present').length}/{participants.length})
-        </h3>
-        <ul className="divide-y max-h-96 overflow-y-auto">
-            {hosts.map(host => (
-                <li key={host.id} className="p-3 flex items-center justify-between">
-                    <span className="font-semibold text-gray-800">{host.name}</span>
-                    <span className="px-2 py-0.5 text-xs font-medium text-primary-800 bg-primary-100 rounded-full">Host</span>
-                </li>
-            ))}
-            {participants.map(p => (
-                <li key={p.id} className="p-3 flex items-center justify-between">
-                    <span className="text-gray-700">{p.name}</span>
-                    {p.attendance === 'present' ? (
-                        <span className="px-2 py-0.5 text-xs font-medium text-green-800 bg-green-100 rounded-full">Present</span>
-                    ) : (
-                        <span className="px-2 py-0.5 text-xs font-medium text-gray-800 bg-gray-100 rounded-full">Pending</span>
-                    )}
-                </li>
-            ))}
-        </ul>
-    </div>
-);
+const ParticipantsPanel: React.FC<{ hosts: Host[], participants: Participant[], session: Session }> = ({ hosts, participants, session }) => {
+    const presentCount = session.participant_records.filter(r => r.attendance === 'present').length;
+    
+    return (
+        <div className="bg-white rounded-lg shadow-md">
+            <h3 className="text-lg font-bold p-4 border-b flex items-center">
+                <UsersIcon className="h-6 w-6 mr-2" /> Participants ({presentCount}/{participants.length})
+            </h3>
+            <ul className="divide-y max-h-96 overflow-y-auto">
+                {hosts.map(host => (
+                    <li key={host.id} className="p-3 flex items-center justify-between">
+                        <span className="font-semibold text-gray-800">{host.name}</span>
+                        <span className="px-2 py-0.5 text-xs font-medium text-primary-800 bg-primary-100 rounded-full">Host</span>
+                    </li>
+                ))}
+                {participants.map(p => {
+                    const record = session.participant_records.find(r => r.participant_id === p.id);
+                    const isPresent = record?.attendance === 'present';
+                    return (
+                        <li key={p.id} className="p-3 flex items-center justify-between">
+                            <span className="text-gray-700">{p.name}</span>
+                            {isPresent ? (
+                                <span className="px-2 py-0.5 text-xs font-medium text-green-800 bg-green-100 rounded-full">Present</span>
+                            ) : (
+                                <span className="px-2 py-0.5 text-xs font-medium text-gray-800 bg-gray-100 rounded-full">Pending</span>
+                            )}
+                        </li>
+                    );
+                })}
+            </ul>
+        </div>
+    );
+};
 
-const FeedbackForm: React.FC<{ workshopTitle: string, onSubmit: (feedback: Feedback) => void }> = ({ workshopTitle, onSubmit }) => {
+
+const FeedbackForm: React.FC<{ workshopTitle: string, sessionTitle: string, onSubmit: (feedback: Feedback) => void }> = ({ workshopTitle, sessionTitle, onSubmit }) => {
     const [interactive, setInteractive] = useState(3);
     const [helpful, setHelpful] = useState(3);
     const [overall, setOverall] = useState(3);
@@ -101,7 +104,7 @@ const FeedbackForm: React.FC<{ workshopTitle: string, onSubmit: (feedback: Feedb
     return (
         <div className="w-full max-w-2xl mx-auto p-8 bg-white rounded-lg shadow-xl mt-10">
             <h2 className="text-2xl font-bold text-center">Session Feedback</h2>
-            <p className="text-center text-gray-600 mt-1 mb-6">For "{workshopTitle}"</p>
+            <p className="text-center text-gray-600 mt-1 mb-6">For "{workshopTitle} - {sessionTitle}"</p>
             <form onSubmit={handleSubmit} className="space-y-6">
                 {[
                     { label: 'Was the session interactive?', value: interactive, setter: setInteractive },
@@ -127,13 +130,13 @@ const FeedbackForm: React.FC<{ workshopTitle: string, onSubmit: (feedback: Feedb
 };
 const EvaluationModal: React.FC<{ 
     participant: Participant, 
+    evaluation: Evaluation | null,
     onClose: () => void, 
     onSubmit: (participantId: string, evaluation: Evaluation) => void 
-}> = ({ participant, onClose, onSubmit }) => {
-    const initialEval = (participant.evaluation as Evaluation | null);
-    const [active, setActive] = useState(initialEval?.active || 3);
-    const [valueAdded, setValueAdded] = useState(initialEval?.valueAdded || 3);
-    const [overall, setOverall] = useState(initialEval?.overall || 3);
+}> = ({ participant, evaluation, onClose, onSubmit }) => {
+    const [active, setActive] = useState(evaluation?.active || 3);
+    const [valueAdded, setValueAdded] = useState(evaluation?.valueAdded || 3);
+    const [overall, setOverall] = useState(evaluation?.overall || 3);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -175,7 +178,7 @@ const EvaluationModal: React.FC<{
     );
 };
 
-const EvaluationPanel: React.FC<{ participants: Participant[], onSaveEvaluation: (participantId: string, evaluation: Evaluation) => void }> = ({ participants, onSaveEvaluation }) => {
+const EvaluationPanel: React.FC<{ workshop: Workshop, session: Session, onSaveEvaluation: (participantId: string, evaluation: Evaluation) => void }> = ({ workshop, session, onSaveEvaluation }) => {
     const [selectedParticipant, setSelectedParticipant] = useState<Participant | null>(null);
 
     const handleSave = (participantId: string, evaluation: Evaluation) => {
@@ -188,17 +191,26 @@ const EvaluationPanel: React.FC<{ participants: Participant[], onSaveEvaluation:
             <h2 className="text-2xl font-bold">Participant Evaluation</h2>
             <p className="mt-1 text-gray-600">Click on a participant to submit their evaluation. Evaluated participants will have a green checkmark.</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-6">
-                {participants.map(p => (
-                    <button key={p.id} onClick={() => setSelectedParticipant(p)} className={`p-4 text-left border rounded-lg flex items-center justify-between transition-all ${p.evaluation ? 'border-green-300 bg-green-50 hover:bg-green-100' : 'border-gray-300 bg-white hover:bg-gray-50'}`} aria-label={`Evaluate ${p.name}`}>
-                        <div>
-                            <p className="font-semibold text-gray-800">{p.name}</p>
-                            <p className="text-sm text-gray-500">{p.email}</p>
-                        </div>
-                        {p.evaluation && <CheckCircleIcon className="h-6 w-6 text-green-500 flex-shrink-0" aria-hidden="true" />}
-                    </button>
-                ))}
+                {workshop.participants.map(p => {
+                    const record = session.participant_records.find(r => r.participant_id === p.id);
+                    const evaluation = record?.evaluation || null;
+                    return (
+                        <button key={p.id} onClick={() => setSelectedParticipant(p)} className={`p-4 text-left border rounded-lg flex items-center justify-between transition-all ${evaluation ? 'border-green-300 bg-green-50 hover:bg-green-100' : 'border-gray-300 bg-white hover:bg-gray-50'}`} aria-label={`Evaluate ${p.name}`}>
+                            <div>
+                                <p className="font-semibold text-gray-800">{p.name}</p>
+                                <p className="text-sm text-gray-500">{p.email}</p>
+                            </div>
+                            {evaluation && <CheckCircleIcon className="h-6 w-6 text-green-500 flex-shrink-0" aria-hidden="true" />}
+                        </button>
+                    );
+                })}
             </div>
-            {selectedParticipant && <EvaluationModal participant={selectedParticipant} onClose={() => setSelectedParticipant(null)} onSubmit={handleSave} />}
+            {selectedParticipant && <EvaluationModal 
+                participant={selectedParticipant} 
+                evaluation={session.participant_records.find(r => r.participant_id === selectedParticipant.id)?.evaluation || null}
+                onClose={() => setSelectedParticipant(null)} 
+                onSubmit={handleSave} 
+            />}
         </div>
     );
 }
@@ -206,123 +218,135 @@ const EvaluationPanel: React.FC<{ participants: Participant[], onSaveEvaluation:
 // --- Main Component ---
 
 const LiveSessionPage: React.FC = () => {
-    const { workshopId } = useParams<{ workshopId: string }>();
-    const { user: managerUser } = useContext(AppContext) as AppContextType;
+    const { sessionId } = useParams<{ sessionId: string }>();
+    const { workshops, updateSession } = useContext(AppContext) as AppContextType;
     const navigate = useNavigate();
 
-    const [workshop, setWorkshop] = useState<Workshop | null>(null);
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-    const [participants, setParticipants] = useState<Participant[]>([]);
-    const [hosts, setHosts] = useState<Host[]>([]);
     const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
     const [isHost, setIsHost] = useState(false);
     const [pageState, setPageState] = useState<'loading' | 'live' | 'feedback' | 'ended' | 'error'>('loading');
+
+    const { workshop, session } = useMemo(() => {
+        if (!sessionId || workshops.length === 0) {
+            return { workshop: null, session: null };
+        }
+        for (const ws of workshops) {
+            const s = ws.sessions.find(s => s.id === sessionId);
+            if (s) {
+                return { workshop: ws, session: s };
+            }
+        }
+        return { workshop: null, session: null };
+    }, [sessionId, workshops]);
 
     useEffect(() => {
         let sessionUser: SessionUser | null = null;
         try {
             const stored = sessionStorage.getItem('workshop_session_user');
             if (stored) sessionUser = JSON.parse(stored);
-            else if (managerUser) sessionUser = managerUser;
         } catch(e) { /* ignore */ }
         
-        if (!sessionUser || !workshopId) {
-            navigate(`/session/${workshopId}/join`);
+        if (!sessionUser || !sessionId) {
+            navigate(`/session/${sessionId}/join`);
             return;
         }
         setCurrentUser(sessionUser);
 
-        const fetchWorkshop = async () => {
-            const { data, error } = await supabase.from('workshops').select('*, participants(*), hosts(*)').eq('id', workshopId).single();
-            if (error || !data) { setPageState('error'); return; }
+        if (workshops.length > 0 && !session) {
+             setPageState('error');
+             return;
+        }
 
-            const ws = data as Workshop;
-            setWorkshop(ws);
-            setParticipants(ws.participants);
-            setHosts(ws.hosts);
-
-            const hostCheck = ws.hosts.some(h => h.email === sessionUser!.email) || sessionUser!.role === 'manager';
+        if (workshop && session) {
+            const hostCheck = workshop.hosts.some(h => h.email === sessionUser!.email) || sessionUser!.role === 'manager';
             setIsHost(hostCheck);
 
-            if (ws.status === 'ended') {
-                if (!hostCheck) {
-                    const p = ws.participants.find(p => p.id === sessionUser!.id);
-                    if (p && !p.feedback) setPageState('feedback');
+            if (session.status === 'ended') {
+                if (!hostCheck) { // I'm a participant
+                    const myRecord = session.participant_records.find(r => r.participant_id === sessionUser!.id);
+                    if (myRecord && !myRecord.feedback) setPageState('feedback');
                     else setPageState('ended');
-                } else {
+                } else { // I'm a host/manager
                     setPageState('ended');
                 }
-            } else {
+            } else if (session.status === 'live' || session.status === 'scheduled') {
                 setPageState('live');
             }
-        };
 
-        const fetchChat = async () => {
-            const { data, error } = await supabase.from('chat_messages').select('*').eq('workshop_id', workshopId);
-            if (!error) setChatMessages((data as ChatMessage[]) || []);
-        };
-
-        fetchWorkshop();
-        fetchChat();
-
-        const chatSub = supabase.channel(`chat-${workshopId}`)
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `workshop_id=eq.${workshopId}` }, payload => {
-                setChatMessages(current => [...current, payload.new as ChatMessage]);
-            }).subscribe();
-        
-        const participantSub = supabase.channel(`participants-${workshopId}`)
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'participants', filter: `workshop_id=eq.${workshopId}` }, payload => {
-                setParticipants(current => current.map(p => p.id === payload.new.id ? payload.new as Participant : p));
-            }).subscribe();
-        
-        const workshopSub = supabase.channel(`workshops-${workshopId}`)
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'workshops', filter: `id=eq.${workshopId}` }, payload => {
-                setWorkshop(current => ({ ...current!, ...(payload.new as Workshop) }));
-                if(payload.new.status === 'ended') {
-                   if (!isHost) setPageState('feedback'); else setPageState('ended');
-                }
-            }).subscribe();
-
-
-        return () => {
-            supabase.removeChannel(chatSub);
-            supabase.removeChannel(participantSub);
-            supabase.removeChannel(workshopSub);
-        };
-
-    }, [workshopId, managerUser, navigate, isHost]);
+            // Load chat from session storage
+            const storedChat = sessionStorage.getItem(`chat_${sessionId}`);
+            if(storedChat) setChatMessages(JSON.parse(storedChat));
+        }
+    }, [sessionId, workshops, workshop, session, navigate]);
 
     const handleEndSession = async () => {
-        if (!workshop) return;
-        await supabase.from('workshops').update({ status: 'ended' } as any).eq('id', workshop.id);
+        if (!session) return;
+        
+        await updateSession({ ...session, status: 'ended' });
+        
+        // As the host, change view to feedback or ended state
+        const myRecord = session.participant_records.find(r => r.participant_id === currentUser!.id);
+        if (!isHost && myRecord && !myRecord.feedback) {
+             setPageState('feedback');
+        } else {
+             setPageState('ended');
+        }
+    };
+
+    const handleSendMessage = (message: string) => {
+        if (!currentUser || !session) return;
+        const newMessage: ChatMessage = {
+            id: `msg_${Date.now()}`,
+            session_id: session.id,
+            sender_id: currentUser.id,
+            sender_name: currentUser.name,
+            message: message,
+            created_at: new Date().toISOString()
+        };
+        const updatedChat = [...chatMessages, newMessage];
+        setChatMessages(updatedChat);
+        sessionStorage.setItem(`chat_${session.id}`, JSON.stringify(updatedChat));
     };
 
     const handleSubmitFeedback = async (feedback: Feedback) => {
-        if (!workshop || !currentUser) return;
-        await supabase.from('participants').update({ feedback: feedback as any } as any).eq('id', currentUser.id);
-        setPageState('ended');
+        if (!session || !currentUser) return;
+        const myRecordIndex = session.participant_records.findIndex(p => p.participant_id === currentUser.id);
+        if (myRecordIndex > -1) {
+            const updatedRecords = [...session.participant_records];
+            updatedRecords[myRecordIndex] = { ...updatedRecords[myRecordIndex], feedback };
+            await updateSession({ ...session, participant_records: updatedRecords });
+            setPageState('ended');
+        }
     };
 
     const handleSaveEvaluation = async (participantId: string, evaluation: Evaluation) => {
-        await supabase.from('participants').update({ evaluation: evaluation as any } as any).eq('id', participantId);
+        if (!session) return;
+        const recordIndex = session.participant_records.findIndex(r => r.participant_id === participantId);
+        if(recordIndex > -1) {
+            const updatedRecords = [...session.participant_records];
+            updatedRecords[recordIndex] = { ...updatedRecords[recordIndex], evaluation };
+            await updateSession({ ...session, participant_records: updatedRecords });
+        }
     };
 
-    if (pageState === 'loading') return <div className="p-10 text-center">Loading session...</div>;
-    if (pageState === 'error' || !workshop) return <div className="p-10 text-center text-red-600">Error: Workshop not found.</div>;
+    if (!workshop || !session) {
+       return <div className="p-10 text-center">{pageState === 'error' ? 'Error: Session not found' : 'Loading session...'}</div>;
+    }
 
-    if (pageState === 'feedback') return <FeedbackForm workshopTitle={workshop.title} onSubmit={handleSubmitFeedback} />;
+    if (pageState === 'feedback') return <FeedbackForm workshopTitle={workshop.title} sessionTitle={session.title} onSubmit={handleSubmitFeedback} />;
 
-    if (pageState === 'ended' || workshop.status === 'ended') {
+    if (pageState === 'ended') {
         if (isHost) {
             return (
                 <div className="container mx-auto px-4 py-8">
                     <div className="text-center mb-8">
-                        <h1 className="text-3xl font-bold text-gray-900">Workshop Ended: {workshop.title}</h1>
-                        <p className="text-lg text-gray-600">Review evaluations and chat history.</p>
+                        <h1 className="text-3xl font-bold text-gray-900">{workshop.title}</h1>
+                        <p className="text-xl text-gray-800">{session.title} - Session Ended</p>
                     </div>
-                    <EvaluationPanel participants={participants} onSaveEvaluation={handleSaveEvaluation} />
-                    <div className="max-w-4xl mx-auto mt-12 h-[70vh]">
-                        {currentUser && <ChatPanel workshopId={workshop.id} chat={chatMessages} currentUser={currentUser} isReadOnly={true} />}
+                    <EvaluationPanel workshop={workshop} session={session} onSaveEvaluation={handleSaveEvaluation} />
+                     <div className="max-w-4xl mx-auto mt-12 h-[70vh]">
+                        {currentUser && <ChatPanel sessionId={session.id} chat={chatMessages} currentUser={currentUser} onSend={() => {}} isReadOnly={true} />}
                     </div>
                 </div>
             );
@@ -330,8 +354,8 @@ const LiveSessionPage: React.FC = () => {
         return (
             <div className="container mx-auto px-4 py-8">
                 <div className="text-center my-20">
-                    <h1 className="text-3xl font-bold text-gray-900">Workshop Ended: {workshop.title}</h1>
-                    <p className="mt-4 text-lg text-gray-600">Thank you for your participation.</p>
+                    <h1 className="text-3xl font-bold text-gray-900">{workshop.title} - {session.title}</h1>
+                    <p className="mt-4 text-lg text-gray-600">This session has ended. Thank you for your participation.</p>
                 </div>
             </div>
         );
@@ -342,7 +366,7 @@ const LiveSessionPage: React.FC = () => {
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900">{workshop.title}</h1>
-                    <p className="text-lg text-gray-600">Session is live</p>
+                    <p className="text-lg text-gray-600">{session.title} - Session is live</p>
                 </div>
                 {isHost && (
                     <button onClick={handleEndSession} className="px-5 py-3 font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
@@ -352,10 +376,10 @@ const LiveSessionPage: React.FC = () => {
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-220px)]">
                 <div className="lg:col-span-2 h-full">
-                    {currentUser && <ChatPanel workshopId={workshop.id} chat={chatMessages} currentUser={currentUser} />}
+                    {currentUser && <ChatPanel sessionId={session.id} chat={chatMessages} currentUser={currentUser} onSend={handleSendMessage} />}
                 </div>
                 <div className="h-full">
-                    <ParticipantsPanel hosts={hosts} participants={participants} />
+                    <ParticipantsPanel hosts={workshop.hosts} participants={workshop.participants} session={session} />
                 </div>
             </div>
         </div>

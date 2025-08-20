@@ -6,73 +6,50 @@ import { useNavigate } from 'react-router-dom';
 
 const WorkshopCard: React.FC<{ workshop: Workshop }> = ({ workshop }) => {
     const navigate = useNavigate();
-    const { user } = useContext(AppContext) as AppContextType;
+    
+    const nextSession = useMemo(() => 
+        workshop.sessions.find(s => s.status !== 'ended'), 
+    [workshop.sessions]);
 
-    const getStatusChip = (status: Workshop['status']) => {
+    const status = nextSession ? (nextSession.status === 'live' ? 'live' : 'scheduled') : 'ended';
+    
+    const getStatusChip = (status: 'scheduled' | 'live' | 'ended') => {
         switch (status) {
             case 'scheduled': return 'bg-blue-100 text-blue-800';
             case 'live': return 'bg-green-100 text-green-800 animate-pulse';
             case 'ended': return 'bg-gray-100 text-gray-800';
-            default: return 'bg-gray-100 text-gray-800';
         }
     };
-    
-    const handleCardClick = () => {
-        if (user?.role === 'manager') {
-            navigate(`/session/${workshop.id}/live`);
-        }
-    };
-    
-    const shareableLink = `${window.location.origin}${window.location.pathname}#/session/${workshop.id}/join`;
 
     return (
         <div 
-            onClick={handleCardClick}
+            onClick={() => navigate(`/workshop/${workshop.id}`)}
             className="bg-white p-6 rounded-lg shadow-md hover:shadow-xl transition-shadow cursor-pointer border border-gray-200 flex flex-col justify-between"
         >
             <div>
                 <div className="flex justify-between items-start">
                     <h3 className="text-xl font-bold text-gray-800 mb-2">{workshop.title}</h3>
-                    <span className={`px-3 py-1 text-xs font-semibold rounded-full ${getStatusChip(workshop.status)}`}>
-                        {workshop.status.charAt(0).toUpperCase() + workshop.status.slice(1)}
+                     <span className={`px-3 py-1 text-xs font-semibold rounded-full ${getStatusChip(status)}`}>
+                        {status.charAt(0).toUpperCase() + status.slice(1)}
                     </span>
                 </div>
-                <div className="flex items-center text-sm text-gray-500 mb-4 space-x-4">
+                <div className="space-y-2 text-sm text-gray-500 mb-4">
                     <div className="flex items-center">
                         <CalendarIcon className="h-4 w-4 mr-1.5" />
-                        <span>{new Date(workshop.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                        <span>{workshop.sessions.length} sessions</span>
                     </div>
+                     {nextSession && (
+                        <div className="flex items-center">
+                            <ClockIcon className="h-4 w-4 mr-1.5" />
+                            <span>Next: {new Date(nextSession.date + 'T00:00:00').toLocaleDateString(undefined, { month: 'long', day: 'numeric' })} at {nextSession.start_time}</span>
+                        </div>
+                    )}
                     <div className="flex items-center">
-                        <ClockIcon className="h-4 w-4 mr-1.5" />
-                        <span>{workshop.start_time} - {workshop.end_time}</span>
+                        <UsersIcon className="h-4 w-4 mr-1.5" />
+                        <span>{workshop.participants.length} participants</span>
                     </div>
-                </div>
-                <div className="flex items-center text-sm text-gray-500">
-                    <UsersIcon className="h-4 w-4 mr-1.5" />
-                    <span>{workshop.participants.length} participants</span>
                 </div>
             </div>
-             {workshop.status !== 'ended' && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                    <p className="text-sm font-medium text-gray-700">Shareable Link for Participants:</p>
-                    <input
-                        type="text"
-                        readOnly
-                        value={shareableLink}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            (e.target as HTMLInputElement).select();
-                            try {
-                                navigator.clipboard.writeText(shareableLink);
-                                alert('Link copied to clipboard!');
-                            } catch (err) {
-                                console.error('Failed to copy text: ', err);
-                            }
-                        }}
-                        className="mt-1 block w-full text-sm text-primary-700 bg-primary-50 rounded-md border-primary-200 focus:ring-primary focus:border-primary cursor-pointer"
-                    />
-                </div>
-            )}
         </div>
     );
 };
@@ -80,9 +57,9 @@ const WorkshopCard: React.FC<{ workshop: Workshop }> = ({ workshop }) => {
 const CreateWorkshopModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const { addWorkshop } = useContext(AppContext) as AppContextType;
     const [title, setTitle] = useState('');
-    const [date, setDate] = useState('');
-    const [startTime, setStartTime] = useState('');
-    const [endTime, setEndTime] = useState('');
+    const [totalSessions, setTotalSessions] = useState(1);
+    const [weekday, setWeekday] = useState('1'); // Monday
+    const [time, setTime] = useState('10:00');
     const [hosts, setHosts] = useState([{ name: '', email: '' }]);
     const [participants, setParticipants] = useState([{ name: '', email: '' }]);
     const [isCreating, setIsCreating] = useState(false);
@@ -106,7 +83,7 @@ const CreateWorkshopModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsCreating(true);
-        const workshopData = { title, date, start_time: startTime, end_time: endTime };
+        const workshopData = { title, total_sessions: totalSessions, weekday, time };
         try {
             await addWorkshop(workshopData, hosts, participants);
             onClose();
@@ -124,7 +101,7 @@ const CreateWorkshopModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
                 <form onSubmit={handleSubmit}>
                     <div className="p-6 sticky top-0 bg-white z-10">
                         <h2 className="text-2xl font-bold text-gray-900">Create New Workshop</h2>
-                        <p className="mt-1 text-sm text-gray-600">Fill in the details below to schedule a new session.</p>
+                        <p className="mt-1 text-sm text-gray-600">Fill in the details below to schedule a new workshop series.</p>
                     </div>
                     <div className="px-6 py-4 space-y-6 border-t border-b border-gray-200">
                         <div>
@@ -133,16 +110,24 @@ const CreateWorkshopModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
-                                <label htmlFor="date" className="block text-sm font-medium text-gray-700">Date</label>
-                                <input type="date" id="date" value={date} onChange={e => setDate(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
+                                <label htmlFor="totalSessions" className="block text-sm font-medium text-gray-700">Total number of sessions</label>
+                                <input type="number" id="totalSessions" value={totalSessions} min="1" onChange={e => setTotalSessions(parseInt(e.target.value, 10))} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
                             </div>
                             <div>
-                                <label htmlFor="startTime" className="block text-sm font-medium text-gray-700">Start Time</label>
-                                <input type="time" id="startTime" value={startTime} onChange={e => setStartTime(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
+                                <label htmlFor="weekday" className="block text-sm font-medium text-gray-700">Day of the week</label>
+                                <select id="weekday" value={weekday} onChange={e => setWeekday(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
+                                    <option value="1">Monday</option>
+                                    <option value="2">Tuesday</option>
+                                    <option value="3">Wednesday</option>
+                                    <option value="4">Thursday</option>
+                                    <option value="5">Friday</option>
+                                    <option value="6">Saturday</option>
+                                    <option value="0">Sunday</option>
+                                </select>
                             </div>
                             <div>
-                                <label htmlFor="endTime" className="block text-sm font-medium text-gray-700">End Time</label>
-                                <input type="time" id="endTime" value={endTime} onChange={e => setEndTime(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
+                                <label htmlFor="time" className="block text-sm font-medium text-gray-700">Time</label>
+                                <input type="time" id="time" value={time} onChange={e => setTime(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
                             </div>
                         </div>
 
@@ -199,10 +184,14 @@ const DashboardPage: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     const { currentAndUpcoming, previous } = useMemo(() => {
-        const sortedWorkshops = [...workshops].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        const sortedWorkshops = [...workshops].sort((a, b) => {
+            const dateA = new Date(a.sessions[0]?.date || 0).getTime();
+            const dateB = new Date(b.sessions[0]?.date || 0).getTime();
+            return dateB - dateA;
+        });
         return {
-            currentAndUpcoming: sortedWorkshops.filter(ws => ws.status !== 'ended'),
-            previous: sortedWorkshops.filter(ws => ws.status === 'ended')
+            currentAndUpcoming: sortedWorkshops.filter(ws => ws.sessions.some(s => s.status !== 'ended')),
+            previous: sortedWorkshops.filter(ws => ws.sessions.every(s => s.status === 'ended'))
         };
     }, [workshops]);
 
@@ -238,6 +227,7 @@ const DashboardPage: React.FC = () => {
                     ) : (
                         <div className="text-center py-10 bg-white rounded-lg shadow-md border">
                             <p className="text-gray-500">No current or upcoming workshops scheduled.</p>
+                             <button onClick={() => setIsModalOpen(true)} className="mt-4 text-sm font-medium text-primary hover:text-primary-700">Create your first workshop</button>
                         </div>
                     )}
                 </div>
