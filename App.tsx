@@ -62,7 +62,7 @@ const App: React.FC = () => {
         if (error) {
             console.error('Error fetching workshops:', error);
         } else {
-            setWorkshops(data || []);
+            setWorkshops((data as Workshop[]) || []);
         }
     }, [session]);
 
@@ -81,7 +81,7 @@ const App: React.FC = () => {
         // 1. Insert workshop
         const { data: newWorkshop, error: workshopError } = await supabase
             .from('workshops')
-            .insert({ ...workshopData, manager_id: user.id })
+            .insert([{ ...workshopData, manager_id: user.id }])
             .select()
             .single();
 
@@ -90,13 +90,15 @@ const App: React.FC = () => {
             return;
         }
 
+        const typedNewWorkshop = newWorkshop as Database['public']['Tables']['workshops']['Row'];
+
         // 2. Insert hosts and participants
-        const hostsToInsert = hosts.map(h => ({ ...h, workshop_id: newWorkshop.id }));
-        const participantsToInsert = participants.map(p => ({ ...p, workshop_id: newWorkshop.id }));
+        const hostsToInsert = hosts.map(h => ({ ...h, workshop_id: typedNewWorkshop.id }));
+        const participantsToInsert = participants.map(p => ({ ...p, workshop_id: typedNewWorkshop.id }));
 
         const [{ error: hostsError }, { error: participantsError }] = await Promise.all([
-             supabase.from('hosts').insert(hostsToInsert),
-             supabase.from('participants').insert(participantsToInsert)
+             supabase.from('hosts').insert(hostsToInsert as any),
+             supabase.from('participants').insert(participantsToInsert as any)
         ]);
 
         if (hostsError) console.error("Error creating hosts:", hostsError);
@@ -107,7 +109,7 @@ const App: React.FC = () => {
 
     const updateWorkshop = useCallback(async (updatedWorkshop: Workshop) => {
         const { id, hosts, participants, ...workshopDetails } = updatedWorkshop;
-        const { error } = await supabase.from('workshops').update(workshopDetails).eq('id', id);
+        const { error } = await supabase.from('workshops').update(workshopDetails as any).eq('id', id);
         if (error) console.error("Error updating workshop:", error);
         // Participants/hosts are updated separately
         await fetchWorkshops();
@@ -115,7 +117,7 @@ const App: React.FC = () => {
     
     const updateParticipant = useCallback(async (updatedParticipant: Participant) => {
         const { id, ...updateData } = updatedParticipant;
-        const { error } = await supabase.from('participants').update(updateData).eq('id', id);
+        const { error } = await supabase.from('participants').update(updateData as any).eq('id', id);
         if (error) console.error("Error updating participant:", error);
         await fetchWorkshops();
     }, [fetchWorkshops]);

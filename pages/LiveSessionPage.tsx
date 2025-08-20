@@ -18,12 +18,12 @@ const ChatPanel: React.FC<{ workshopId: string, chat: ChatMessage[], currentUser
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
         if (message.trim()) {
-            await supabase.from('chat_messages').insert({
+            await supabase.from('chat_messages').insert([{
                 workshop_id: workshopId,
                 sender_id: currentUser.id,
                 sender_name: currentUser.name,
                 message: message.trim(),
-            });
+            }]);
             setMessage('');
         }
     };
@@ -236,7 +236,7 @@ const LiveSessionPage: React.FC = () => {
             const { data, error } = await supabase.from('workshops').select('*, participants(*), hosts(*)').eq('id', workshopId).single();
             if (error || !data) { setPageState('error'); return; }
 
-            const ws = data;
+            const ws = data as Workshop;
             setWorkshop(ws);
             setParticipants(ws.participants);
             setHosts(ws.hosts);
@@ -259,7 +259,7 @@ const LiveSessionPage: React.FC = () => {
 
         const fetchChat = async () => {
             const { data, error } = await supabase.from('chat_messages').select('*').eq('workshop_id', workshopId);
-            if (!error) setChatMessages(data || []);
+            if (!error) setChatMessages((data as ChatMessage[]) || []);
         };
 
         fetchWorkshop();
@@ -294,17 +294,17 @@ const LiveSessionPage: React.FC = () => {
 
     const handleEndSession = async () => {
         if (!workshop) return;
-        await supabase.from('workshops').update({ status: 'ended' }).eq('id', workshop.id);
+        await supabase.from('workshops').update({ status: 'ended' } as any).eq('id', workshop.id);
     };
 
     const handleSubmitFeedback = async (feedback: Feedback) => {
         if (!workshop || !currentUser) return;
-        await supabase.from('participants').update({ feedback: feedback as any }).eq('id', currentUser.id);
+        await supabase.from('participants').update({ feedback: feedback as any } as any).eq('id', currentUser.id);
         setPageState('ended');
     };
 
     const handleSaveEvaluation = async (participantId: string, evaluation: Evaluation) => {
-        await supabase.from('participants').update({ evaluation: evaluation as any }).eq('id', participantId);
+        await supabase.from('participants').update({ evaluation: evaluation as any } as any).eq('id', participantId);
     };
 
     if (pageState === 'loading') return <div className="p-10 text-center">Loading session...</div>;

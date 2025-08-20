@@ -29,7 +29,7 @@ const JoinSessionPage: React.FC = () => {
             if (error || !data) {
                 setError("Workshop not found.");
             } else {
-                setWorkshop(data);
+                setWorkshop(data as Workshop);
             }
             setIsLoading(false);
         };
@@ -50,7 +50,7 @@ const JoinSessionPage: React.FC = () => {
             // Mark attendance
             const { error: updateError } = await supabase
                 .from('participants')
-                .update({ attendance: 'present' })
+                .update({ attendance: 'present' } as any)
                 .eq('id', participant.id);
 
             if (updateError) {
@@ -60,7 +60,7 @@ const JoinSessionPage: React.FC = () => {
             
             // If this is the first person to join, set the workshop status to live
             if (workshop.status === 'scheduled') {
-                await supabase.from('workshops').update({ status: 'live' }).eq('id', workshop.id);
+                await supabase.from('workshops').update({ status: 'live' } as any).eq('id', workshop.id);
             }
             
             sessionStorage.setItem('workshop_session_user', JSON.stringify({
