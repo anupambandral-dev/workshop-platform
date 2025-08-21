@@ -2,7 +2,7 @@ import React, { useState, useContext, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
 import { supabase } from '../services/supabase';
-import type { AppContextType, Workshop, ChatMessage, Participant, Feedback, SessionUser, Evaluation, Host, SessionWithRecords } from '../types';
+import type { AppContextType, Workshop, ChatMessage, Participant, Feedback, SessionUser, Host, SessionWithRecords, HostReflection } from '../types';
 import { UsersIcon, SendIcon, CheckCircleIcon } from '../components/Icons';
 
 // --- Helper Components ---
@@ -91,7 +91,6 @@ const ParticipantsPanel: React.FC<{ hosts: Host[], participants: Participant[], 
     );
 };
 
-
 const FeedbackForm: React.FC<{ workshopTitle: string, sessionTitle: string, onSubmit: (feedback: Feedback) => void }> = ({ workshopTitle, sessionTitle, onSubmit }) => {
     const [interactive, setInteractive] = useState(3);
     const [helpful, setHelpful] = useState(3);
@@ -129,93 +128,87 @@ const FeedbackForm: React.FC<{ workshopTitle: string, sessionTitle: string, onSu
         </div>
     );
 };
-const EvaluationModal: React.FC<{ 
-    participant: Participant, 
-    evaluation: Evaluation | null,
-    onClose: () => void, 
-    onSubmit: (participantId: string, evaluation: Evaluation) => void 
-}> = ({ participant, evaluation, onClose, onSubmit }) => {
-    const initialEvaluation = evaluation;
-    const [active, setActive] = useState(initialEvaluation?.active || 3);
-    const [valueAdded, setValueAdded] = useState(initialEvaluation?.valueAdded || 3);
-    const [overall, setOverall] = useState(initialEvaluation?.overall || 3);
 
+const HostReflectionModal: React.FC<{
+    participants: Participant[];
+    onClose: () => void;
+    onSubmit: (reflection: HostReflection) => void;
+}> = ({ participants, onClose, onSubmit }) => {
+    const [proactiveParticipantId, setProactiveParticipantId] = useState(participants[0]?.id || '');
+    const [lessEngagedParticipantId, setLessEngagedParticipantId] = useState(participants[0]?.id || '');
+    const [ahaMoment, setAhaMoment] = useState('');
+    const [biggestChallenge, setBiggestChallenge] = useState('');
+    const [overallSuccess, setOverallSuccess] = useState(3);
+    
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSubmit(participant.id, { active, valueAdded, overall });
+        const proactiveParticipant = participants.find(p => p.id === proactiveParticipantId);
+        const lessEngagedParticipant = participants.find(p => p.id === lessEngagedParticipantId);
+
+        if (!proactiveParticipant || !lessEngagedParticipant) {
+            alert("Please select participants.");
+            return;
+        }
+
+        onSubmit({
+            proactiveParticipantId,
+            proactiveParticipantName: proactiveParticipant.name,
+            lessEngagedParticipantId,
+            lessEngagedParticipantName: lessEngagedParticipant.name,
+            ahaMoment,
+            biggestChallenge,
+            overallSuccess,
+        });
     };
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                 <form onSubmit={handleSubmit}>
                     <div className="p-6">
-                        <h3 className="text-xl font-bold text-gray-900">Evaluate: {participant.name}</h3>
-                        <p className="mt-1 text-sm text-gray-600">{participant.email}</p>
+                        <h3 className="text-xl font-bold text-gray-900">Host's Reflection</h3>
+                        <p className="mt-1 text-sm text-gray-600">Please provide your insights from the session.</p>
                     </div>
                     <div className="px-6 py-4 space-y-6 border-t border-b">
-                        {[
-                            { label: 'Was the participant active?', value: active, setter: setActive },
-                            { label: 'Did they add value to the workshop?', value: valueAdded, setter: setValueAdded },
-                            { label: 'Overall rating?', value: overall, setter: setOverall },
-                        ].map(({ label, value, setter }) => (
-                            <div key={label}>
-                                <label className="block text-sm font-medium text-gray-700">{label}</label>
-                                <div className="flex items-center space-x-4 mt-2">
-                                    <span className="text-sm text-gray-500">1</span>
-                                    <input type="range" min="1" max="5" value={value} onChange={(e) => setter(parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" />
-                                    <span className="text-sm text-gray-500">5</span>
-                                    <span className="font-bold text-primary w-4 text-center">{value}</span>
-                                </div>
+                        <div>
+                            <label htmlFor="proactive" className="block text-sm font-medium text-gray-700">Who was the most proactive participant?</label>
+                            <select id="proactive" value={proactiveParticipantId} onChange={e => setProactiveParticipantId(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
+                                {participants.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            </select>
+                        </div>
+                         <div>
+                            <label htmlFor="lessEngaged" className="block text-sm font-medium text-gray-700">Who seemed the least engaged?</label>
+                            <select id="lessEngaged" value={lessEngagedParticipantId} onChange={e => setLessEngagedParticipantId(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
+                                {participants.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label htmlFor="ahaMoment" className="block text-sm font-medium text-gray-700">What was the most significant "aha moment"?</label>
+                            <textarea id="ahaMoment" value={ahaMoment} onChange={e => setAhaMoment(e.target.value)} rows={3} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" required />
+                        </div>
+                        <div>
+                            <label htmlFor="challenge" className="block text-sm font-medium text-gray-700">What was the biggest challenge you faced?</label>
+                            <textarea id="challenge" value={biggestChallenge} onChange={e => setBiggestChallenge(e.target.value)} rows={3} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" required />
+                        </div>
+                         <div>
+                            <label className="block text-sm font-medium text-gray-700">How would you rate the overall success of the session?</label>
+                            <div className="flex items-center space-x-4 mt-2">
+                                <span className="text-sm text-gray-500">1</span>
+                                <input type="range" min="1" max="5" value={overallSuccess} onChange={(e) => setOverallSuccess(parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" />
+                                <span className="text-sm text-gray-500">5</span>
+                                <span className="font-bold text-primary w-4 text-center">{overallSuccess}</span>
                             </div>
-                        ))}
+                        </div>
                     </div>
                     <div className="p-4 bg-gray-50 flex justify-end space-x-3">
                         <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50">Cancel</button>
-                        <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md shadow-sm hover:bg-primary-700">Save Evaluation</button>
+                        <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md shadow-sm hover:bg-primary-700">Save & End Session</button>
                     </div>
                 </form>
             </div>
         </div>
     );
 };
-
-const EvaluationPanel: React.FC<{ workshop: Workshop, session: SessionWithRecords, onSaveEvaluation: (participantId: string, evaluation: Evaluation) => void }> = ({ workshop, session, onSaveEvaluation }) => {
-    const [selectedParticipant, setSelectedParticipant] = useState<Participant | null>(null);
-
-    const handleSave = (participantId: string, evaluation: Evaluation) => {
-        onSaveEvaluation(participantId, evaluation);
-        setSelectedParticipant(null);
-    };
-    
-    return (
-        <div className="w-full max-w-4xl mx-auto p-8 bg-white rounded-lg shadow-xl mt-10">
-            <h2 className="text-2xl font-bold">Participant Evaluation</h2>
-            <p className="mt-1 text-gray-600">Click on a participant to submit their evaluation. Evaluated participants will have a green checkmark.</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-6">
-                {workshop.participants.map(p => {
-                    const record = session.session_participant_records.find(r => r.participant_id === p.id);
-                    const evaluation = record?.evaluation;
-                    return (
-                        <button key={p.id} onClick={() => setSelectedParticipant(p)} className={`p-4 text-left border rounded-lg flex items-center justify-between transition-all ${evaluation ? 'border-green-300 bg-green-50 hover:bg-green-100' : 'border-gray-300 bg-white hover:bg-gray-50'}`} aria-label={`Evaluate ${p.name}`}>
-                            <div>
-                                <p className="font-semibold text-gray-800">{p.name}</p>
-                                <p className="text-sm text-gray-500">{p.email}</p>
-                            </div>
-                            {evaluation && <CheckCircleIcon className="h-6 w-6 text-green-500 flex-shrink-0" aria-hidden="true" />}
-                        </button>
-                    );
-                })}
-            </div>
-            {selectedParticipant && <EvaluationModal 
-                participant={selectedParticipant} 
-                evaluation={session.session_participant_records.find(r => r.participant_id === selectedParticipant.id)?.evaluation ?? null}
-                onClose={() => setSelectedParticipant(null)} 
-                onSubmit={handleSave} 
-            />}
-        </div>
-    );
-}
 
 // --- Main Component ---
 
@@ -227,6 +220,7 @@ const LiveSessionPage: React.FC = () => {
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
     const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
     const [isHost, setIsHost] = useState(false);
+    const [isReflectionModalOpen, setIsReflectionModalOpen] = useState(false);
     const [pageState, setPageState] = useState<'loading' | 'live' | 'feedback' | 'ended' | 'error'>('loading');
 
     const { workshop, session } = useMemo(() => {
@@ -281,7 +275,7 @@ const LiveSessionPage: React.FC = () => {
         const fetchChat = async () => {
             const { data, error } = await supabase.from('chat_messages').select('*').eq('session_id', session.id).order('created_at');
             if (error) console.error("Error fetching chat:", error);
-            else setChatMessages(data as ChatMessage[]);
+            else setChatMessages(data || []);
         };
         fetchChat();
 
@@ -297,12 +291,6 @@ const LiveSessionPage: React.FC = () => {
             supabase.removeChannel(channel);
         };
     }, [session]);
-
-
-    const handleEndSession = async () => {
-        if (!session) return;
-        await updateSession({ ...session, status: 'ended' });
-    };
 
     const handleSendMessage = async (message: string) => {
         if (!currentUser || !session) return;
@@ -326,13 +314,15 @@ const LiveSessionPage: React.FC = () => {
         }
     };
 
-    const handleSaveEvaluation = async (participantId: string, evaluation: Evaluation) => {
+    const handleSaveReflection = async (reflection: HostReflection) => {
         if (!session) return;
-        const record = session.session_participant_records.find(r => r.participant_id === participantId);
-        if(record) {
-            record.evaluation = evaluation;
-            await updateSession(session);
-        }
+        await updateSession({
+            ...session,
+            status: 'ended',
+            host_reflection: reflection,
+        });
+        setIsReflectionModalOpen(false);
+        setPageState('ended');
     };
 
     if (!workshop || !session) {
@@ -342,25 +332,15 @@ const LiveSessionPage: React.FC = () => {
     if (pageState === 'feedback') return <FeedbackForm workshopTitle={workshop.title} sessionTitle={session.title} onSubmit={handleSubmitFeedback} />;
 
     if (pageState === 'ended') {
-        if (isHost) {
-            return (
-                <div className="container mx-auto px-4 py-8">
-                    <div className="text-center mb-8">
-                        <h1 className="text-3xl font-bold text-gray-900">{workshop.title}</h1>
-                        <p className="text-xl text-gray-800">{session.title} - Session Ended</p>
-                    </div>
-                    <EvaluationPanel workshop={workshop} session={session} onSaveEvaluation={handleSaveEvaluation} />
-                     <div className="max-w-4xl mx-auto mt-12 h-[70vh]">
-                        {currentUser && <ChatPanel chat={chatMessages} currentUser={currentUser} onSend={() => {}} isReadOnly={true} />}
-                    </div>
-                </div>
-            );
-        }
+        // After session ends, host is taken here. This view is now simpler.
         return (
             <div className="container mx-auto px-4 py-8">
                 <div className="text-center my-20">
                     <h1 className="text-3xl font-bold text-gray-900">{workshop.title} - {session.title}</h1>
                     <p className="mt-4 text-lg text-gray-600">This session has ended. Thank you for your participation.</p>
+                     {isHost && (
+                        <p className="mt-2 text-sm text-gray-500">Your reflection has been saved.</p>
+                    )}
                 </div>
             </div>
         );
@@ -374,7 +354,7 @@ const LiveSessionPage: React.FC = () => {
                     <p className="text-lg text-gray-600">{session.title} - Session is live</p>
                 </div>
                 {isHost && (
-                    <button onClick={handleEndSession} className="px-5 py-3 font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                    <button onClick={() => setIsReflectionModalOpen(true)} className="px-5 py-3 font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
                         End Session for All
                     </button>
                 )}
@@ -387,6 +367,14 @@ const LiveSessionPage: React.FC = () => {
                     <ParticipantsPanel hosts={workshop.hosts} participants={workshop.participants} session={session} />
                 </div>
             </div>
+
+            {isReflectionModalOpen && (
+                <HostReflectionModal
+                    participants={workshop.participants}
+                    onClose={() => setIsReflectionModalOpen(false)}
+                    onSubmit={handleSaveReflection}
+                />
+            )}
         </div>
     );
 };

@@ -34,7 +34,7 @@ const App: React.FC = () => {
             console.error('Error fetching workshops:', error);
             setWorkshops([]);
         } else {
-            setWorkshops(data as Workshop[]);
+            setWorkshops((data as any[]) || []);
         }
         setIsLoading(false);
     }, []);
@@ -45,7 +45,7 @@ const App: React.FC = () => {
             console.error('Error fetching employees:', error);
             setEmployees([]);
         } else {
-            setEmployees(data);
+            setEmployees(data || []);
         }
     }, []);
 
@@ -109,6 +109,7 @@ const App: React.FC = () => {
             .select()
             .single();
         if (workshopError) throw workshopError;
+        if (!workshop) throw new Error("Workshop creation failed.");
 
         const workshopId = workshop.id;
 
@@ -123,6 +124,7 @@ const App: React.FC = () => {
 
         if (hostError) throw hostError;
         if (participantError) throw participantError;
+        if (!participants) throw new Error("Failed to add participants.");
 
         // 3. Generate and Add Sessions
         const getNextDayOfWeek = (dayOfWeek: number): Date => {
@@ -153,17 +155,17 @@ const App: React.FC = () => {
         
         const { data: sessions, error: sessionError } = await supabase.from('sessions').insert(sessionsToInsert).select();
         if (sessionError) throw sessionError;
+        if (!sessions) throw new Error("Failed to create sessions.");
 
         // 4. Create participant records for each session
         const participantRecordsToInsert = [];
         for (const session of sessions) {
-            for (const participant of participants!) {
+            for (const participant of participants) {
                 participantRecordsToInsert.push({
                     session_id: session.id,
                     participant_id: participant.id,
                     attendance: 'pending' as const,
                     feedback: null,
-                    evaluation: null,
                 });
             }
         }
@@ -174,19 +176,19 @@ const App: React.FC = () => {
     }, [user, fetchWorkshops]);
     
     const updateSession = useCallback(async (updatedSession: SessionWithRecords) => {
-        const { id, title, date, start_time, end_time, status } = updatedSession;
+        const { id, title, date, start_time, end_time, status, host_reflection } = updatedSession;
         const { error: sessionUpdateError } = await supabase
             .from('sessions')
-            .update({ title, date, start_time, end_time, status })
+            .update({ title, date, start_time, end_time, status, host_reflection })
             .eq('id', id);
 
         if (sessionUpdateError) throw sessionUpdateError;
 
         for (const record of updatedSession.session_participant_records) {
-             const { id: recordId, attendance, feedback, evaluation } = record;
+             const { id: recordId, attendance, feedback } = record;
              const { error: recordUpdateError } = await supabase
                 .from('session_participant_records')
-                .update({ attendance, feedback, evaluation })
+                .update({ attendance, feedback })
                 .eq('id', recordId);
             if (recordUpdateError) console.error("Error updating record:", recordUpdateError);
         }

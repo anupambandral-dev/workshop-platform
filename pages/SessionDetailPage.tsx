@@ -1,11 +1,10 @@
-
 import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
 import { AppContextType } from '../types';
 import { CalendarIcon, ClockIcon, UsersIcon } from '../components/Icons';
 
-type Tab = 'details' | 'go-live' | 'attendance';
+type Tab = 'details' | 'go-live' | 'attendance' | 'reflection';
 
 const SessionDetailPage: React.FC = () => {
     const { workshopId, sessionId } = useParams<{ workshopId: string, sessionId: string }>();
@@ -107,9 +106,14 @@ const SessionDetailPage: React.FC = () => {
                         </button>
                     )}
                     {session.status === 'ended' && (
-                         <button onClick={() => setActiveTab('attendance')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'attendance' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
-                            Attendance
-                        </button>
+                        <>
+                            <button onClick={() => setActiveTab('attendance')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'attendance' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
+                                Attendance
+                            </button>
+                             <button onClick={() => setActiveTab('reflection')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'reflection' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
+                                Host Reflection
+                            </button>
+                        </>
                     )}
                 </nav>
             </div>
@@ -178,6 +182,39 @@ const SessionDetailPage: React.FC = () => {
                         </ul>
                     </div>
                 )}
+                {activeTab === 'reflection' && session.host_reflection && (
+                    <div className="bg-white p-6 rounded-lg shadow-md border">
+                        <h3 className="text-xl font-bold mb-4">Host Reflection Summary</h3>
+                        <dl className="space-y-4">
+                            <div>
+                                <dt className="text-sm font-medium text-gray-500">Most proactive participant</dt>
+                                <dd className="mt-1 text-md text-gray-900">{session.host_reflection.proactiveParticipantName}</dd>
+                            </div>
+                            <div>
+                                <dt className="text-sm font-medium text-gray-500">Least engaged participant</dt>
+                                <dd className="mt-1 text-md text-gray-900">{session.host_reflection.lessEngagedParticipantName}</dd>
+                            </div>
+                            <div>
+                                <dt className="text-sm font-medium text-gray-500">Most significant "aha moment"</dt>
+                                <dd className="mt-1 text-md text-gray-900 whitespace-pre-wrap">{session.host_reflection.ahaMoment}</dd>
+                            </div>
+                            <div>
+                                <dt className="text-sm font-medium text-gray-500">Biggest challenge</dt>
+                                <dd className="mt-1 text-md text-gray-900 whitespace-pre-wrap">{session.host_reflection.biggestChallenge}</dd>
+                            </div>
+                             <div>
+                                <dt className="text-sm font-medium text-gray-500">Overall success rating</dt>
+                                <dd className="mt-1 text-md text-gray-900">{session.host_reflection.overallSuccess} / 5</dd>
+                            </div>
+                        </dl>
+                    </div>
+                )}
+                 {activeTab === 'reflection' && !session.host_reflection && (
+                      <div className="bg-white p-6 rounded-lg shadow-md border text-center">
+                         <h3 className="text-xl font-bold mb-4">Host Reflection</h3>
+                         <p className="text-gray-500">No reflection was submitted for this session.</p>
+                      </div>
+                 )}
             </div>
         </div>
     );
