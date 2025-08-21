@@ -91,44 +91,6 @@ const ParticipantsPanel: React.FC<{ hosts: Host[], participants: Participant[], 
     );
 };
 
-const FeedbackForm: React.FC<{ workshopTitle: string, sessionTitle: string, onSubmit: (feedback: Feedback) => void }> = ({ workshopTitle, sessionTitle, onSubmit }) => {
-    const [interactive, setInteractive] = useState(3);
-    const [helpful, setHelpful] = useState(3);
-    const [overall, setOverall] = useState(3);
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSubmit({ interactive, helpful, overall });
-    };
-
-    return (
-        <div className="w-full max-w-2xl mx-auto p-8 bg-white rounded-lg shadow-xl mt-10">
-            <h2 className="text-2xl font-bold text-center">Session Feedback</h2>
-            <p className="text-center text-gray-600 mt-1 mb-6">For "{workshopTitle} - {sessionTitle}"</p>
-            <form onSubmit={handleSubmit} className="space-y-6">
-                {[
-                    { label: 'Was the session interactive?', value: interactive, setter: setInteractive },
-                    { label: 'Was the session helpful?', value: helpful, setter: setHelpful },
-                    { label: 'How would you rate the session overall?', value: overall, setter: setOverall },
-                ].map(({ label, value, setter }) => (
-                    <div key={label}>
-                        <label className="block text-sm font-medium text-gray-700">{label}</label>
-                        <div className="flex items-center space-x-4 mt-2">
-                            <span className="text-sm text-gray-500">1</span>
-                            <input type="range" min="1" max="5" value={value} onChange={(e) => setter(parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" />
-                            <span className="text-sm text-gray-500">5</span>
-                            <span className="font-bold text-primary w-4 text-center">{value}</span>
-                        </div>
-                    </div>
-                ))}
-                <button type="submit" className="w-full mt-4 flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
-                    Submit Feedback
-                </button>
-            </form>
-        </div>
-    );
-};
-
 const HostReflectionModal: React.FC<{
     participants: Participant[];
     onClose: () => void;
@@ -221,7 +183,7 @@ const LiveSessionPage: React.FC = () => {
     const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
     const [isHost, setIsHost] = useState(false);
     const [isReflectionModalOpen, setIsReflectionModalOpen] = useState(false);
-    const [pageState, setPageState] = useState<'loading' | 'live' | 'feedback' | 'ended' | 'error'>('loading');
+    const [pageState, setPageState] = useState<'loading' | 'live' | 'ended' | 'error'>('loading');
 
     const { workshop, session } = useMemo(() => {
         if (!sessionId || workshops.length === 0) return { workshop: null, session: null };
@@ -255,13 +217,7 @@ const LiveSessionPage: React.FC = () => {
             setIsHost(hostCheck);
 
             if (session.status === 'ended') {
-                if (!hostCheck) { // I'm a participant
-                    const myRecord = session.session_participant_records.find(r => r.participant_id === sessionUser!.id);
-                    if (myRecord && !myRecord.feedback) setPageState('feedback');
-                    else setPageState('ended');
-                } else { // I'm a host/manager
-                    setPageState('ended');
-                }
+                setPageState('ended');
             } else if (session.status === 'live' || session.status === 'scheduled') {
                 setPageState('live');
             }
@@ -296,8 +252,8 @@ const LiveSessionPage: React.FC = () => {
                     const updatedSession = payload.new as SessionWithRecords;
                     // Update global state without full refetch
                     updateSessionInState({ ...session, ...updatedSession }); 
-                    if (updatedSession.status === 'ended' && !isHost) {
-                       setPageState('feedback'); // Automatically move participant to feedback/ended view
+                    if (updatedSession.status === 'ended') {
+                       setPageState('ended'); // Automatically move participant to ended view
                     }
                 }
             )
@@ -333,20 +289,6 @@ const LiveSessionPage: React.FC = () => {
         if (error) console.error("Error sending message:", error);
     };
 
-    const handleSubmitFeedback = async (feedback: Feedback) => {
-        if (!session || !currentUser) return;
-        const myRecord = session.session_participant_records.find(p => p.participant_id === currentUser.id);
-        if (myRecord) {
-            const updatedRecord = { ...myRecord, feedback };
-            const updatedSession = { 
-                ...session, 
-                session_participant_records: session.session_participant_records.map(r => r.id === updatedRecord.id ? updatedRecord : r)
-            };
-            await updateSession(updatedSession);
-            setPageState('ended');
-        }
-    };
-
     const handleSaveReflection = async (reflection: HostReflection) => {
         if (!session) return;
         // This will now trigger the real-time update for all participants
@@ -362,8 +304,6 @@ const LiveSessionPage: React.FC = () => {
     if (!workshop || !session) {
        return <div className="p-10 text-center">{pageState === 'error' ? 'Error: Session not found' : 'Loading session...'}</div>;
     }
-
-    if (pageState === 'feedback') return <FeedbackForm workshopTitle={workshop.title} sessionTitle={session.title} onSubmit={handleSubmitFeedback} />;
 
     if (pageState === 'ended') {
         if (isHost) {
@@ -385,12 +325,29 @@ const LiveSessionPage: React.FC = () => {
                  </div>
             );
         }
-        // Ended view for participants
+        
+        // Ended view for participants with conditional feedback link
+        const myRecord = currentUser ? session.session_participant_records.find(r => r.participant_id === currentUser.id) : null;
+        const attended = myRecord?.attendance === 'present';
+        
         return (
             <div className="container mx-auto px-4 py-8">
                 <div className="text-center my-20">
                     <h1 className="text-3xl font-bold text-gray-900">{workshop.title} - {session.title}</h1>
-                    <p className="mt-4 text-lg text-gray-600">This session has ended. Thank you for your participation.</p>
+                    <p className="mt-4 text-lg text-gray-600">This session has ended.</p>
+                    {attended && (
+                         <div className="mt-8">
+                            <p className="text-gray-700 mb-4">Thank you for your participation!</p>
+                            <a 
+                                href="https://echogb.typeform.com/to/cY2oFNyx" 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="px-6 py-3 text-base font-medium text-white bg-primary rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                            >
+                                Provide Feedback
+                            </a>
+                         </div>
+                     )}
                 </div>
             </div>
         );

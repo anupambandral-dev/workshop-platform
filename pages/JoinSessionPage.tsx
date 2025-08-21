@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
 import type { Workshop, AppContextType, Session, Participant, SessionWithRecords, SessionParticipantRecord } from '../types';
 import { LogoIcon } from '../components/Icons';
+import { supabase } from '../services/supabase';
 
 const JoinSessionPage: React.FC = () => {
     const { sessionId } = useParams<{ sessionId: string }>();
@@ -39,6 +40,40 @@ const JoinSessionPage: React.FC = () => {
        }
     }, [workshops, session]);
 
+    // Real-time listener for the waiting page
+    useEffect(() => {
+        if (view !== 'status_view' || !session || session.status !== 'scheduled') {
+            return;
+        }
+
+        const channel = supabase.channel(`session_status_${session.id}`)
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'sessions',
+                filter: `id=eq.${session.id}`
+            }, (payload) => {
+                if ((payload.new as Session).status === 'live') {
+                    // Host has started the session, redirect participant
+                    if(identifiedParticipant) {
+                         sessionStorage.setItem('workshop_session_user', JSON.stringify({
+                            id: identifiedParticipant.participant.id,
+                            name: identifiedParticipant.participant.name,
+                            email: identifiedParticipant.participant.email,
+                            role: 'participant',
+                        }));
+                        navigate(`/session/${sessionId}/live`);
+                    }
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+
+    }, [view, session, sessionId, navigate, identifiedParticipant]);
+
     const handleIdentify = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
@@ -51,7 +86,8 @@ const JoinSessionPage: React.FC = () => {
         const record = participant ? session.session_participant_records.find(r => r.participant_id === participant.id) : undefined;
         
         if (participant && record) {
-            setIdentifiedParticipant({ workshop, session, participant, record });
+            const participantData = { workshop, session, participant, record };
+            setIdentifiedParticipant(participantData);
             
             // If the session is live, mark attendance and redirect immediately
             if (session.status === 'live') {
@@ -146,7 +182,7 @@ const JoinSessionPage: React.FC = () => {
                      <h2 className="mt-6 text-3xl font-extrabold text-gray-900">{workshop.title}</h2>
                      <p className="mt-2 text-xl text-gray-800">{session.title}</p>
                      <p className="mt-8 text-2xl text-gray-600 animate-pulse">The host has not started the session yet.</p>
-                     <p className="mt-2 text-gray-500">Please wait for the host to begin.</p>
+                     <p className="mt-2 text-gray-500">This page will automatically refresh when the session begins.</p>
                  </div>
             );
         }
