@@ -279,6 +279,24 @@ const App: React.FC = () => {
         }
     }, [fetchWorkshops]);
 
+    const deleteWorkshop = useCallback(async (workshopId: string) => {
+        // Optimistic UI update
+        const originalWorkshops = workshops;
+        setWorkshops(prev => prev.filter(w => w.id !== workshopId));
+
+        const { error } = await supabase
+            .from('workshops')
+            .delete()
+            .eq('id', workshopId);
+
+        if (error) {
+            console.error('Error deleting workshop:', error);
+            alert('Failed to delete workshop. Restoring data.');
+            setWorkshops(originalWorkshops); // Revert on failure
+            throw error;
+        }
+    }, [workshops]);
+
     const updateSessionInState = useCallback((updatedSession: SessionWithRecords) => {
         setWorkshops(prev => prev.map(w => w.id === updatedSession.workshop_id 
             ? { ...w, sessions: w.sessions.map(s => s.id === updatedSession.id ? updatedSession : s) } 
@@ -309,9 +327,10 @@ const App: React.FC = () => {
         logout,
         addWorkshop,
         updateSession,
+        deleteWorkshop,
         updateSessionInState,
         updateParticipantRecordInState,
-    }), [user, workshops, employees, isLoading, logout, addWorkshop, updateSession, updateSessionInState, updateParticipantRecordInState]);
+    }), [user, workshops, employees, isLoading, logout, addWorkshop, updateSession, deleteWorkshop, updateSessionInState, updateParticipantRecordInState]);
 
     return (
         <AppContext.Provider value={appContextValue}>

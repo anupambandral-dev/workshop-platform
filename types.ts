@@ -111,6 +111,7 @@ export interface AppContextType {
     participants: Omit<Participant, 'id' | 'workshop_id'>[]
   ) => Promise<void>;
   updateSession: (session: SessionWithRecords) => Promise<void>;
+  deleteWorkshop: (workshopId: string) => Promise<void>;
   updateSessionInState: (updatedSession: SessionWithRecords) => void;
   updateParticipantRecordInState: (updatedRecord: SessionParticipantRecord) => void;
 }
@@ -134,7 +135,6 @@ export type Database = {
           name?: string;
           email?: string;
         };
-        Relationships: [];
       };
       chat_messages: {
         Row: {
@@ -313,7 +313,6 @@ export type Database = {
           title?: string;
           manager_id?: string;
         };
-        Relationships: [];
       };
     };
     Views: {

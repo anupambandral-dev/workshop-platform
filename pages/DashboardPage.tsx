@@ -1,12 +1,13 @@
 
+
 import React, { useState, useContext, useMemo } from 'react';
 import { AppContext } from '../App';
 import type { AppContextType, Workshop, Host, Participant, Employee } from '../types';
-import { PlusIcon, UsersIcon, CalendarIcon, ClockIcon, XMarkIcon } from '../components/Icons';
+import { PlusIcon, UsersIcon, CalendarIcon, ClockIcon, XMarkIcon, TrashIcon, ExclamationTriangleIcon } from '../components/Icons';
 import { useNavigate } from 'react-router-dom';
 import UserSearchModal from '../components/UserSearchModal';
 
-const WorkshopCard: React.FC<{ workshop: Workshop }> = ({ workshop }) => {
+const WorkshopCard: React.FC<{ workshop: Workshop, onDelete: () => void }> = ({ workshop, onDelete }) => {
     const navigate = useNavigate();
     
     const nextSession = useMemo(() => 
@@ -31,15 +32,28 @@ const WorkshopCard: React.FC<{ workshop: Workshop }> = ({ workshop }) => {
             case 'ended': return 'bg-gray-100 text-gray-800';
         }
     };
+    
+    const handleDelete = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        onDelete();
+    };
 
     return (
         <div 
             onClick={() => navigate(`/workshop/${workshop.id}`)}
-            className="bg-white p-6 rounded-lg shadow-md hover:shadow-xl transition-shadow cursor-pointer border border-gray-200 flex flex-col justify-between"
+            className="bg-white p-6 rounded-lg shadow-md hover:shadow-xl transition-shadow cursor-pointer border border-gray-200 flex flex-col justify-between relative group"
         >
+            <button 
+                onClick={handleDelete}
+                className="absolute top-4 right-4 p-1.5 bg-gray-100 rounded-full text-gray-500 hover:bg-red-100 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-500"
+                aria-label="Delete workshop"
+            >
+                <TrashIcon className="h-5 w-5" />
+            </button>
+
             <div>
                 <div className="flex justify-between items-start">
-                    <h3 className="text-xl font-bold text-gray-800 mb-2">{workshop.title}</h3>
+                    <h3 className="text-xl font-bold text-gray-800 mb-2 pr-10">{workshop.title}</h3>
                      <span className={`px-3 py-1 text-xs font-semibold rounded-full ${getStatusChip(status)}`}>
                         {status.charAt(0).toUpperCase() + status.slice(1)}
                     </span>
@@ -211,9 +225,56 @@ const CreateWorkshopModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
     );
 };
 
+const DeleteWorkshopModal: React.FC<{
+    workshop: Workshop;
+    onClose: () => void;
+    onConfirm: () => void;
+    isDeleting: boolean;
+}> = ({ workshop, onClose, onConfirm, isDeleting }) => {
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+                <div className="p-6 flex">
+                    <div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                        <ExclamationTriangleIcon className="h-6 w-6 text-red-600" aria-hidden="true" />
+                    </div>
+                    <div className="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left">
+                        <h3 className="text-lg font-semibold leading-6 text-gray-900">Delete Workshop</h3>
+                        <div className="mt-2">
+                            <p className="text-sm text-gray-500">
+                                Are you sure you want to permanently delete the workshop{' '}
+                                <strong className="font-medium text-gray-800">"{workshop.title}"</strong>? All of its sessions and data will be removed. This action cannot be undone.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div className="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+                    <button
+                        type="button"
+                        onClick={onConfirm}
+                        disabled={isDeleting}
+                        className="inline-flex w-full justify-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:ml-3 sm:w-auto disabled:bg-red-300"
+                    >
+                        {isDeleting ? 'Deleting...' : 'Delete'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto"
+                    >
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const DashboardPage: React.FC = () => {
-    const { workshops, isLoading, user } = useContext(AppContext) as AppContextType;
+    const { workshops, isLoading, user, deleteWorkshop } = useContext(AppContext) as AppContextType;
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [workshopToDelete, setWorkshopToDelete] = useState<Workshop | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const { currentAndUpcoming, previous } = useMemo(() => {
         const sortedWorkshops = [...workshops].sort((a, b) => {
@@ -226,6 +287,19 @@ const DashboardPage: React.FC = () => {
             previous: sortedWorkshops.filter(ws => ws.sessions.every(s => s.status === 'ended'))
         };
     }, [workshops]);
+
+    const handleConfirmDelete = async () => {
+        if (!workshopToDelete) return;
+        setIsDeleting(true);
+        try {
+            await deleteWorkshop(workshopToDelete.id);
+            setWorkshopToDelete(null);
+        } catch (error) {
+            console.error("Failed to delete workshop on page:", error);
+        } finally {
+            setIsDeleting(false);
+        }
+    };
 
     if (isLoading) {
         return <div className="text-center p-10">Loading workshops...</div>;
@@ -249,12 +323,21 @@ const DashboardPage: React.FC = () => {
 
             {isModalOpen && <CreateWorkshopModal onClose={() => setIsModalOpen(false)} />}
             
+            {workshopToDelete && (
+                <DeleteWorkshopModal 
+                    workshop={workshopToDelete}
+                    onClose={() => setWorkshopToDelete(null)}
+                    onConfirm={handleConfirmDelete}
+                    isDeleting={isDeleting}
+                />
+            )}
+            
             <div className="space-y-12">
                 <div>
                     <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2 mb-6">Current & Upcoming</h2>
                     {currentAndUpcoming.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {currentAndUpcoming.map(ws => <WorkshopCard key={ws.id} workshop={ws} />)}
+                            {currentAndUpcoming.map(ws => <WorkshopCard key={ws.id} workshop={ws} onDelete={() => setWorkshopToDelete(ws)} />)}
                         </div>
                     ) : (
                         <div className="text-center py-10 bg-white rounded-lg shadow-md border">
@@ -268,7 +351,7 @@ const DashboardPage: React.FC = () => {
                     <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2 mb-6">Previous Workshops</h2>
                     {previous.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {previous.map(ws => <WorkshopCard key={ws.id} workshop={ws} />)}
+                            {previous.map(ws => <WorkshopCard key={ws.id} workshop={ws} onDelete={() => setWorkshopToDelete(ws)} />)}
                         </div>
                     ) : (
                         <div className="text-center py-10 bg-white rounded-lg shadow-md border">
