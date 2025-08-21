@@ -10,11 +10,20 @@ const WorkshopCard: React.FC<{ workshop: Workshop }> = ({ workshop }) => {
     const navigate = useNavigate();
     
     const nextSession = useMemo(() => 
-        workshop.sessions.find(s => s.status !== 'ended'), 
+        [...workshop.sessions]
+            .filter(s => s.status !== 'ended')
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0],
     [workshop.sessions]);
 
     const status = nextSession ? (nextSession.status === 'live' ? 'live' : 'scheduled') : 'ended';
     
+    const completedSessions = useMemo(() => 
+        workshop.sessions.filter(s => s.status === 'ended').length,
+    [workshop.sessions]);
+    
+    const totalSessions = workshop.sessions.length;
+    const progressPercentage = totalSessions > 0 ? (completedSessions / totalSessions) * 100 : 0;
+
     const getStatusChip = (status: 'scheduled' | 'live' | 'ended') => {
         switch (status) {
             case 'scheduled': return 'bg-blue-100 text-blue-800';
@@ -50,6 +59,18 @@ const WorkshopCard: React.FC<{ workshop: Workshop }> = ({ workshop }) => {
                         <UsersIcon className="h-4 w-4 mr-1.5" />
                         <span>{workshop.participants.length} participants</span>
                     </div>
+                </div>
+            </div>
+            <div className="mt-4 pt-4 border-t border-gray-100">
+                <div className="flex justify-between items-center text-xs text-gray-500 mb-1">
+                    <span>Progress</span>
+                    <span>{completedSessions} / {totalSessions} Complete</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                        className="bg-primary h-2 rounded-full transition-all duration-500" 
+                        style={{ width: `${progressPercentage}%` }}
+                    ></div>
                 </div>
             </div>
         </div>
