@@ -200,17 +200,17 @@ export type Database = {
           session_id: string;
           participant_id: string;
           attendance: 'pending' | 'present';
-          feedback?: Feedback | null;
+          feedback?: any;
         };
         Insert: {
           session_id: string;
           participant_id: string;
           attendance?: 'pending' | 'present';
-          feedback?: Feedback | null;
+          feedback?: any;
         };
         Update: {
           attendance?: 'pending' | 'present';
-          feedback?: Feedback | null;
+          feedback?: any;
         };
       };
       sessions: {
@@ -223,7 +223,7 @@ export type Database = {
           start_time: string;
           end_time: string;
           status: 'scheduled' | 'live' | 'ended';
-          host_reflection?: HostReflection | null;
+          host_reflection?: any;
         };
         Insert: {
           workshop_id: string;
@@ -233,7 +233,7 @@ export type Database = {
           start_time: string;
           end_time: string;
           status?: 'scheduled' | 'live' | 'ended';
-          host_reflection?: HostReflection | null;
+          host_reflection?: any;
         };
         Update: {
           workshop_id?: string;
@@ -243,7 +243,7 @@ export type Database = {
           start_time?: string;
           end_time?: string;
           status?: 'scheduled' | 'live' | 'ended';
-          host_reflection?: HostReflection | null;
+          host_reflection?: any;
         };
       };
       workshops: {
