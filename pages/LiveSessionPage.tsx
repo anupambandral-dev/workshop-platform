@@ -2,7 +2,7 @@ import React, { useState, useContext, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
 import { supabase } from '../services/supabase';
-import type { AppContextType, Workshop, ChatMessage, Participant, Feedback, SessionUser, Host, SessionWithRecords, HostReflection } from '../types';
+import type { AppContextType, Workshop, ChatMessage, Participant, Feedback, SessionUser, Host, SessionWithRecords, HostReflection, SessionParticipantRecord } from '../types';
 import { UsersIcon, SendIcon, CheckCircleIcon } from '../components/Icons';
 
 // --- Helper Components ---
@@ -214,7 +214,7 @@ const HostReflectionModal: React.FC<{
 
 const LiveSessionPage: React.FC = () => {
     const { sessionId } = useParams<{ sessionId: string }>();
-    const { workshops, updateSession } = useContext(AppContext) as AppContextType;
+    const { workshops, updateSession, updateSessionInState, updateParticipantRecordInState } = useContext(AppContext) as AppContextType;
     const navigate = useNavigate();
 
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -268,10 +268,11 @@ const LiveSessionPage: React.FC = () => {
         }
     }, [sessionId, workshops, workshop, session, navigate]);
     
-    // Realtime chat subscription
+    // Real-time subscriptions
     useEffect(() => {
-        if (!session) return;
+        if (!session || !currentUser) return;
         
+        // --- 1. Fetch initial chat messages ---
         const fetchChat = async () => {
             const { data, error } = await supabase.from('chat_messages').select('*').eq('session_id', session.id).order('created_at');
             if (error) console.error("Error fetching chat:", error);
@@ -279,7 +280,8 @@ const LiveSessionPage: React.FC = () => {
         };
         fetchChat();
 
-        const channel = supabase.channel(`chat_${session.id}`)
+        // --- 2. Subscribe to new chat messages ---
+        const chatChannel = supabase.channel(`chat_${session.id}`)
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `session_id=eq.${session.id}` },
                 (payload) => {
                     setChatMessages(currentMessages => [...currentMessages, payload.new as ChatMessage]);
@@ -287,10 +289,37 @@ const LiveSessionPage: React.FC = () => {
             )
             .subscribe();
 
+        // --- 3. Subscribe to session status changes (for participants) ---
+        const sessionChannel = supabase.channel(`session_${session.id}`)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sessions', filter: `id=eq.${session.id}` },
+                (payload) => {
+                    const updatedSession = payload.new as SessionWithRecords;
+                    // Update global state without full refetch
+                    updateSessionInState({ ...session, ...updatedSession }); 
+                    if (updatedSession.status === 'ended' && !isHost) {
+                       setPageState('feedback'); // Automatically move participant to feedback/ended view
+                    }
+                }
+            )
+            .subscribe();
+        
+        // --- 4. Subscribe to attendance changes ---
+        const attendanceChannel = supabase.channel(`attendance_${session.id}`)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'session_participant_records', filter: `session_id=eq.${session.id}` },
+                (payload) => {
+                    // Update global state instantly
+                    updateParticipantRecordInState(payload.new as SessionParticipantRecord);
+                }
+            )
+            .subscribe();
+
+
         return () => {
-            supabase.removeChannel(channel);
+            supabase.removeChannel(chatChannel);
+            supabase.removeChannel(sessionChannel);
+            supabase.removeChannel(attendanceChannel);
         };
-    }, [session]);
+    }, [session, currentUser, isHost, updateSessionInState, updateParticipantRecordInState]);
 
     const handleSendMessage = async (message: string) => {
         if (!currentUser || !session) return;
@@ -308,14 +337,19 @@ const LiveSessionPage: React.FC = () => {
         if (!session || !currentUser) return;
         const myRecord = session.session_participant_records.find(p => p.participant_id === currentUser.id);
         if (myRecord) {
-            myRecord.feedback = feedback;
-            await updateSession(session);
+            const updatedRecord = { ...myRecord, feedback };
+            const updatedSession = { 
+                ...session, 
+                session_participant_records: session.session_participant_records.map(r => r.id === updatedRecord.id ? updatedRecord : r)
+            };
+            await updateSession(updatedSession);
             setPageState('ended');
         }
     };
 
     const handleSaveReflection = async (reflection: HostReflection) => {
         if (!session) return;
+        // This will now trigger the real-time update for all participants
         await updateSession({
             ...session,
             status: 'ended',
@@ -332,15 +366,31 @@ const LiveSessionPage: React.FC = () => {
     if (pageState === 'feedback') return <FeedbackForm workshopTitle={workshop.title} sessionTitle={session.title} onSubmit={handleSubmitFeedback} />;
 
     if (pageState === 'ended') {
-        // After session ends, host is taken here. This view is now simpler.
+        if (isHost) {
+            // New "ended" view for hosts with chat history and final attendance
+            return (
+                 <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                     <div className="text-center mb-8">
+                        <h1 className="text-3xl font-bold text-gray-900">{workshop.title} - {session.title}</h1>
+                        <p className="mt-2 text-lg text-gray-600">This session has ended.</p>
+                     </div>
+                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="lg:col-span-2 h-[calc(100vh-220px)]">
+                             {currentUser && <ChatPanel chat={chatMessages} currentUser={currentUser} onSend={() => {}} isReadOnly={true} />}
+                        </div>
+                        <div className="h-full">
+                             <ParticipantsPanel hosts={workshop.hosts} participants={workshop.participants} session={session} />
+                        </div>
+                    </div>
+                 </div>
+            );
+        }
+        // Ended view for participants
         return (
             <div className="container mx-auto px-4 py-8">
                 <div className="text-center my-20">
                     <h1 className="text-3xl font-bold text-gray-900">{workshop.title} - {session.title}</h1>
                     <p className="mt-4 text-lg text-gray-600">This session has ended. Thank you for your participation.</p>
-                     {isHost && (
-                        <p className="mt-2 text-sm text-gray-500">Your reflection has been saved.</p>
-                    )}
                 </div>
             </div>
         );
