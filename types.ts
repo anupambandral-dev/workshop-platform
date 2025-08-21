@@ -120,12 +120,12 @@ export type Database = {
           sender_name: string;
           message: string;
         };
-        Update: Partial<{
-          session_id: string;
-          sender_id: string;
-          sender_name: string;
-          message: string;
-        }>;
+        Update: {
+          session_id?: string;
+          sender_id?: string;
+          sender_name?: string;
+          message?: string;
+        };
       };
       hosts: {
         Row: Host;
@@ -134,11 +134,11 @@ export type Database = {
           name: string;
           email: string;
         };
-        Update: Partial<{
-          workshop_id: string;
-          name: string;
-          email: string;
-        }>;
+        Update: {
+          workshop_id?: string;
+          name?: string;
+          email?: string;
+        };
       };
       participants: {
         Row: Participant;
@@ -147,11 +147,11 @@ export type Database = {
           name: string;
           email: string;
         };
-        Update: Partial<{
-          workshop_id: string;
-          name: string;
-          email: string;
-        }>;
+        Update: {
+          workshop_id?: string;
+          name?: string;
+          email?: string;
+        };
       };
       session_participant_records: {
         Row: SessionParticipantRecord;
@@ -162,13 +162,13 @@ export type Database = {
           feedback: Json | null;
           evaluation: Json | null;
         };
-        Update: Partial<{
-          session_id: string;
-          participant_id: string;
-          attendance: 'pending' | 'present';
-          feedback: Json | null;
-          evaluation: Json | null;
-        }>;
+        Update: {
+          session_id?: string;
+          participant_id?: string;
+          attendance?: 'pending' | 'present';
+          feedback?: Json | null;
+          evaluation?: Json | null;
+        };
       };
       sessions: {
         Row: Session;
@@ -181,15 +181,15 @@ export type Database = {
           end_time: string;
           status: 'scheduled' | 'live' | 'ended';
         };
-        Update: Partial<{
-          workshop_id: string;
-          session_number: number;
-          title: string;
-          date: string;
-          start_time: string;
-          end_time: string;
-          status: 'scheduled' | 'live' | 'ended';
-        }>;
+        Update: {
+          workshop_id?: string;
+          session_number?: number;
+          title?: string;
+          date?: string;
+          start_time?: string;
+          end_time?: string;
+          status?: 'scheduled' | 'live' | 'ended';
+        };
       };
       workshops: {
         Row: RawWorkshop;
@@ -197,10 +197,10 @@ export type Database = {
           title: string;
           manager_id: string;
         };
-        Update: Partial<{
-          title: string;
-          manager_id: string;
-        }>;
+        Update: {
+          title?: string;
+          manager_id?: string;
+        };
       };
     };
     Views: {
