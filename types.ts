@@ -111,6 +111,8 @@ export interface AppContextType {
     participants: Omit<Participant, 'id' | 'workshop_id'>[]
   ) => Promise<void>;
   updateSession: (session: SessionWithRecords) => Promise<void>;
+  updateSessionInState: (updatedSession: SessionWithRecords) => void;
+  updateParticipantRecordInState: (updatedRecord: SessionParticipantRecord) => void;
 }
 
 // --- Supabase generated types replacement ---
