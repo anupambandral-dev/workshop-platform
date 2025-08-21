@@ -2,7 +2,7 @@ import React, { useState, useContext, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
 import { supabase } from '../services/supabase';
-import type { AppContextType, Workshop, ChatMessage, Participant, Feedback, SessionUser, Host, SessionWithRecords, HostReflection, SessionParticipantRecord } from '../types';
+import type { AppContextType, Workshop, ChatMessage, Participant, Feedback, SessionUser, Host, Session, SessionWithRecords, HostReflection, SessionParticipantRecord } from '../types';
 import { UsersIcon, SendIcon, CheckCircleIcon } from '../components/Icons';
 
 // --- Helper Components ---
@@ -249,7 +249,7 @@ const LiveSessionPage: React.FC = () => {
         const sessionChannel = supabase.channel(`session_${session.id}`)
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sessions', filter: `id=eq.${session.id}` },
                 (payload) => {
-                    const updatedSession = payload.new as SessionWithRecords;
+                    const updatedSession = payload.new as Session;
                     // Update global state without full refetch
                     updateSessionInState({ ...session, ...updatedSession }); 
                     if (updatedSession.status === 'ended') {
