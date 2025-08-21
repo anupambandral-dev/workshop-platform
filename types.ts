@@ -157,15 +157,6 @@ export type Database = {
           sender_name?: string;
           message?: string;
         };
-        Relationships: [
-          {
-            foreignKeyName: "chat_messages_session_id_fkey";
-            columns: ["session_id"];
-            isOneToOne: false;
-            referencedRelation: "sessions";
-            referencedColumns: ["id"];
-          }
-        ];
       };
       hosts: {
         Row: {
@@ -184,15 +175,6 @@ export type Database = {
           name?: string;
           email?: string;
         };
-        Relationships: [
-          {
-            foreignKeyName: "hosts_workshop_id_fkey";
-            columns: ["workshop_id"];
-            isOneToOne: false;
-            referencedRelation: "workshops";
-            referencedColumns: ["id"];
-          }
-        ];
       };
       participants: {
         Row: {
@@ -211,15 +193,6 @@ export type Database = {
           name?: string;
           email?: string;
         };
-        Relationships: [
-          {
-            foreignKeyName: "participants_workshop_id_fkey";
-            columns: ["workshop_id"];
-            isOneToOne: false;
-            referencedRelation: "workshops";
-            referencedColumns: ["id"];
-          }
-        ];
       };
       session_participant_records: {
         Row: {
@@ -239,22 +212,6 @@ export type Database = {
           attendance?: 'pending' | 'present';
           feedback?: Feedback | null;
         };
-        Relationships: [
-          {
-            foreignKeyName: "session_participant_records_participant_id_fkey";
-            columns: ["participant_id"];
-            isOneToOne: false;
-            referencedRelation: "participants";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "session_participant_records_session_id_fkey";
-            columns: ["session_id"];
-            isOneToOne: false;
-            referencedRelation: "sessions";
-            referencedColumns: ["id"];
-          }
-        ];
       };
       sessions: {
         Row: {
@@ -288,15 +245,6 @@ export type Database = {
           status?: 'scheduled' | 'live' | 'ended';
           host_reflection?: HostReflection | null;
         };
-        Relationships: [
-          {
-            foreignKeyName: "sessions_workshop_id_fkey";
-            columns: ["workshop_id"];
-            isOneToOne: false;
-            referencedRelation: "workshops";
-            referencedColumns: ["id"];
-          }
-        ];
       };
       workshops: {
         Row: {
