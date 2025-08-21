@@ -1,13 +1,5 @@
 // Types for the application, designed to work with Supabase
 
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[];
-
 // --- Database table shapes (based on your Supabase schema) ---
 
 export type Host = {
@@ -41,8 +33,8 @@ export type SessionParticipantRecord = {
   session_id: string;
   participant_id: string;
   attendance: 'pending' | 'present';
-  feedback: Json | null;      // Stored as JSONB in Supabase
-  evaluation: Json | null;    // Stored as JSONB in Supabase
+  feedback: Feedback | null;      // Stored as JSONB in Supabase
+  evaluation: Evaluation | null;    // Stored as JSONB in Supabase
 };
 
 export type Session = {
@@ -159,15 +151,15 @@ export type Database = {
           session_id: string;
           participant_id: string;
           attendance: 'pending' | 'present';
-          feedback: Json | null;
-          evaluation: Json | null;
+          feedback: Feedback | null;
+          evaluation: Evaluation | null;
         };
         Update: {
           session_id?: string;
           participant_id?: string;
           attendance?: 'pending' | 'present';
-          feedback?: Json | null;
-          evaluation?: Json | null;
+          feedback?: Feedback | null;
+          evaluation?: Evaluation | null;
         };
       };
       sessions: {
