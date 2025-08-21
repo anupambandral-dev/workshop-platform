@@ -129,19 +129,25 @@ const App: React.FC = () => {
     
     const setupUserSession = useCallback(async (session: any | null) => {
         if (session?.user) {
-            const role = session.user.user_metadata?.role || 'host'; 
-            setUser({
-                id: session.user.id,
-                name: session.user.email?.split('@')[0] || 'User',
-                email: session.user.email!,
-                role: role
-            });
-            const allEmployees = await fetchEmployees();
-            await fetchWorkshops(allEmployees);
+            // CRITICAL FIX: Correctly fetch the role from metadata. Do not default to a privileged role.
+            const role = session.user.user_metadata?.role;
+            if (role === 'manager' || role === 'host') {
+                 setUser({
+                    id: session.user.id,
+                    name: session.user.email?.split('@')[0] || 'User',
+                    email: session.user.email!,
+                    role: role
+                });
+                const allEmployees = await fetchEmployees();
+                await fetchWorkshops(allEmployees);
+            } else {
+                // User has no valid role, treat as logged out
+                setUser(null);
+                setWorkshops([]);
+                await fetchEmployees(); // Fetch employees for public context if needed
+            }
         } else {
              setUser(null);
-             // Fetch public data if needed, but RLS will handle filtering.
-             // We can fetch employees so search modals have context even if workshops are empty.
              await fetchEmployees();
              setWorkshops([]); // Clear workshops on logout
         }
@@ -172,79 +178,73 @@ const App: React.FC = () => {
     const addWorkshop = async (workshopData: { title: string; total_sessions: number; weekday: string; time: string }, hosts: Employee[], participants: Employee[]) => {
         if (!user) throw new Error("User must be logged in to create a workshop.");
 
-        // 1. Create the workshop
-        const { data: workshop, error: workshopError } = await supabase
-            .from('workshops')
-            .insert({ title: workshopData.title, manager_id: user.id })
-            .select()
-            .single();
+        try {
+            // 1. Create the workshop
+            const { data: workshop, error: workshopError } = await supabase
+                .from('workshops')
+                .insert({ title: workshopData.title, manager_id: user.id })
+                .select()
+                .single();
 
-        if (workshopError || !workshop) throw new Error(workshopError?.message || "Failed to create workshop.");
+            if (workshopError || !workshop) throw new Error(workshopError?.message || "Failed to create workshop.");
 
-        // 2. Generate Sessions
-        const sessionsToCreate = [];
-        let currentDate = new Date();
-        const targetWeekday = parseInt(workshopData.weekday, 10);
-        
-        while (currentDate.getDay() !== targetWeekday) {
-            currentDate.setDate(currentDate.getDate() + 1);
-        }
-
-        for (let i = 1; i <= workshopData.total_sessions; i++) {
-            sessionsToCreate.push({
-                workshop_id: workshop.id,
-                session_number: i,
-                title: `Session ${i}`,
-                date: currentDate.toISOString().split('T')[0],
-                start_time: workshopData.time,
-                end_time: workshopData.time,
-                status: 'scheduled' as const,
-            });
-            currentDate.setDate(currentDate.getDate() + 7);
-        }
-
-        const { data: sessions, error: sessionsError } = await supabase.from('sessions').insert(sessionsToCreate).select();
-        if (sessionsError || !sessions) throw new Error(sessionsError?.message || "Failed to create sessions.");
-
-        // 3. Add Hosts
-        const hostsToCreate = hosts.map(h => ({ workshop_id: workshop.id, user_id: h.id }));
-        const { error: hostsError } = await supabase.from('hosts').insert(hostsToCreate);
-        if (hostsError) throw new Error(hostsError.message);
-
-        // 4. Add Participants
-        const participantsToCreate = participants.map(p => ({ workshop_id: workshop.id, name: p.name, email: p.email }));
-        const { data: createdParticipants, error: participantsError } = await supabase.from('participants').insert(participantsToCreate).select();
-        if (participantsError || !createdParticipants) throw new Error(participantsError.message);
-        
-        // 5. Create participant records for each session
-        const recordsToCreate = [];
-        for (const session of sessions) {
-            for (const participant of createdParticipants) {
-                recordsToCreate.push({
-                    session_id: session.id,
-                    participant_id: participant.id,
-                    attendance: 'pending' as const
-                });
+            // 2. Generate Sessions
+            const sessionsToCreate = [];
+            let currentDate = new Date();
+            const targetWeekday = parseInt(workshopData.weekday, 10);
+            
+            while (currentDate.getDay() !== targetWeekday) {
+                currentDate.setDate(currentDate.getDate() + 1);
             }
-        }
-        const { error: recordsError } = await supabase.from('session_participant_records').insert(recordsToCreate);
-        if (recordsError) throw new Error(recordsError.message);
 
-        // 6. Optimistic UI update
-        const newWorkshop = {
-            ...workshop,
-            hosts: hosts.map(h => ({ user_id: h.id, name: h.name, email: h.email })),
-            participants: createdParticipants,
-            sessions: sessions.map(s => ({
-                ...s,
-                session_participant_records: createdParticipants.map(p => ({
-                    session_id: s.id,
-                    participant_id: p.id,
-                    attendance: 'pending'
-                }))
-            }))
-        };
-        setWorkshops(prev => [newWorkshop as Workshop, ...prev]);
+            for (let i = 1; i <= workshopData.total_sessions; i++) {
+                sessionsToCreate.push({
+                    workshop_id: workshop.id,
+                    session_number: i,
+                    title: `Session ${i}`,
+                    date: currentDate.toISOString().split('T')[0],
+                    start_time: workshopData.time,
+                    end_time: workshopData.time,
+                    status: 'scheduled' as const,
+                });
+                currentDate.setDate(currentDate.getDate() + 7);
+            }
+
+            const { data: sessions, error: sessionsError } = await supabase.from('sessions').insert(sessionsToCreate).select();
+            if (sessionsError || !sessions) throw new Error(sessionsError?.message || "Failed to create sessions.");
+
+            // 3. Add Hosts
+            const hostsToCreate = hosts.map(h => ({ workshop_id: workshop.id, user_id: h.id }));
+            const { error: hostsError } = await supabase.from('hosts').insert(hostsToCreate);
+            if (hostsError) throw new Error(hostsError.message);
+
+            // 4. Add Participants
+            const participantsToCreate = participants.map(p => ({ workshop_id: workshop.id, name: p.name, email: p.email }));
+            const { data: createdParticipants, error: participantsError } = await supabase.from('participants').insert(participantsToCreate).select();
+            if (participantsError || !createdParticipants) throw new Error(participantsError.message);
+            
+            // 5. Create participant records for each session
+            const recordsToCreate = [];
+            for (const session of sessions) {
+                for (const participant of createdParticipants) {
+                    recordsToCreate.push({
+                        session_id: session.id,
+                        participant_id: participant.id,
+                        attendance: 'pending' as const
+                    });
+                }
+            }
+            const { error: recordsError } = await supabase.from('session_participant_records').insert(recordsToCreate);
+            if (recordsError) throw new Error(recordsError.message);
+
+            // CRITICAL FIX: Remove buggy optimistic update and perform a reliable refetch.
+            await fetchWorkshops(employees);
+            
+        } catch (error) {
+            console.error("Error in addWorkshop:", error);
+            // Optionally, re-throw to be caught by the component
+            throw error;
+        }
     };
     
     const updateSession = async (session: SessionWithRecords) => {
@@ -313,7 +313,7 @@ const App: React.FC = () => {
         deleteWorkshop,
         updateSessionInState,
         updateParticipantRecordInState
-    }), [user, workshops, employees, isLoading]);
+    }), [user, workshops, employees, isLoading, fetchWorkshops]); // Added fetchWorkshops to dependency array
 
     return (
         <AppContext.Provider value={value}>
