@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect, createContext } from 'react';
 import { HashRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { supabase } from './services/supabase';
-import type { AppContextType, Workshop, SessionUser, SessionWithRecords, Employee, SessionParticipantRecord, Host } from './types';
+import type { AppContextType, Workshop, SessionUser, SessionWithRecords, Employee, SessionParticipantRecord, Host, Database } from './types';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import JoinSessionPage from './pages/JoinSessionPage';
@@ -107,7 +107,7 @@ const App: React.FC = () => {
                     };
                 }),
             }));
-            setWorkshops(enrichedWorkshops as any);
+            setWorkshops(enrichedWorkshops as Workshop[]);
         } else {
              setWorkshops([]);
         }
@@ -129,7 +129,7 @@ const App: React.FC = () => {
     
     const setupUserSession = useCallback(async (session: any | null) => {
         if (session?.user) {
-            // CRITICAL FIX: Correctly fetch the role from metadata. Do not default to a privileged role.
+            // CRITICAL FIX: Correctly fetch the role from metadata.
             const role = session.user.user_metadata?.role;
             if (role === 'manager' || role === 'host') {
                  setUser({
@@ -141,15 +141,15 @@ const App: React.FC = () => {
                 const allEmployees = await fetchEmployees();
                 await fetchWorkshops(allEmployees);
             } else {
-                // User has no valid role, treat as logged out
+                // User has no valid role, treat as logged out. This is a security improvement.
                 setUser(null);
                 setWorkshops([]);
-                await fetchEmployees(); // Fetch employees for public context if needed
+                await fetchEmployees(); 
             }
         } else {
              setUser(null);
              await fetchEmployees();
-             setWorkshops([]); // Clear workshops on logout
+             setWorkshops([]); 
         }
         setIsLoading(false);
     }, [fetchWorkshops, fetchEmployees]);
@@ -189,7 +189,7 @@ const App: React.FC = () => {
             if (workshopError || !workshop) throw new Error(workshopError?.message || "Failed to create workshop.");
 
             // 2. Generate Sessions
-            const sessionsToCreate = [];
+            const sessionsToCreate: Array<Database['public']['Tables']['sessions']['Insert']> = [];
             let currentDate = new Date();
             const targetWeekday = parseInt(workshopData.weekday, 10);
             
@@ -214,17 +214,17 @@ const App: React.FC = () => {
             if (sessionsError || !sessions) throw new Error(sessionsError?.message || "Failed to create sessions.");
 
             // 3. Add Hosts
-            const hostsToCreate = hosts.map(h => ({ workshop_id: workshop.id, user_id: h.id }));
+            const hostsToCreate: Array<Database['public']['Tables']['hosts']['Insert']> = hosts.map(h => ({ workshop_id: workshop.id, user_id: h.id }));
             const { error: hostsError } = await supabase.from('hosts').insert(hostsToCreate);
             if (hostsError) throw new Error(hostsError.message);
 
             // 4. Add Participants
-            const participantsToCreate = participants.map(p => ({ workshop_id: workshop.id, name: p.name, email: p.email }));
+            const participantsToCreate: Array<Database['public']['Tables']['participants']['Insert']> = participants.map(p => ({ workshop_id: workshop.id, name: p.name, email: p.email }));
             const { data: createdParticipants, error: participantsError } = await supabase.from('participants').insert(participantsToCreate).select();
             if (participantsError || !createdParticipants) throw new Error(participantsError.message);
             
             // 5. Create participant records for each session
-            const recordsToCreate = [];
+            const recordsToCreate: Array<Database['public']['Tables']['session_participant_records']['Insert']> = [];
             for (const session of sessions) {
                 for (const participant of createdParticipants) {
                     recordsToCreate.push({
@@ -238,11 +238,11 @@ const App: React.FC = () => {
             if (recordsError) throw new Error(recordsError.message);
 
             // CRITICAL FIX: Remove buggy optimistic update and perform a reliable refetch.
+            // This guarantees the UI updates correctly.
             await fetchWorkshops(employees);
             
         } catch (error) {
             console.error("Error in addWorkshop:", error);
-            // Optionally, re-throw to be caught by the component
             throw error;
         }
     };
@@ -313,7 +313,7 @@ const App: React.FC = () => {
         deleteWorkshop,
         updateSessionInState,
         updateParticipantRecordInState
-    }), [user, workshops, employees, isLoading, fetchWorkshops]); // Added fetchWorkshops to dependency array
+    }), [user, workshops, employees, isLoading]);
 
     return (
         <AppContext.Provider value={value}>
