@@ -18,7 +18,8 @@ const WorkshopDetailPage: React.FC = () => {
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
     }, [workshop]);
     
-    const shareableLink = nextUpcomingSession ? `${window.location.origin}${window.location.pathname}#/session/${nextUpcomingSession.id}/join` : null;
+    const participantLink = nextUpcomingSession ? `${window.location.origin}${window.location.pathname}#/session/${nextUpcomingSession.id}/join` : null;
+    const hostLink = nextUpcomingSession ? `${participantLink}?role=host` : null;
 
     if (!workshop) {
         return <div className="p-10 text-center">Loading workshop details...</div>;
@@ -32,6 +33,10 @@ const WorkshopDetailPage: React.FC = () => {
             default: return 'bg-gray-100 text-gray-800';
         }
     };
+
+    const copyToClipboard = (link: string, type: string) => {
+      navigator.clipboard.writeText(link).then(() => alert(`${type} link copied!`));
+    }
 
     return (
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -50,19 +55,46 @@ const WorkshopDetailPage: React.FC = () => {
                 </div>
             </div>
             
-            {shareableLink && (
-                <div className="mb-8 p-4 bg-primary-50 border border-primary-200 rounded-lg">
-                    <p className="text-sm font-medium text-gray-700">Shareable Link for Next Session ({nextUpcomingSession?.title}):</p>
-                    <input
-                        type="text"
-                        readOnly
-                        value={shareableLink}
-                        onClick={(e) => {
-                            (e.target as HTMLInputElement).select();
-                            navigator.clipboard.writeText(shareableLink).then(() => alert('Link copied!'));
-                        }}
-                        className="mt-1 block w-full text-sm text-primary-700 bg-white rounded-md border-primary-200 focus:ring-primary focus:border-primary cursor-pointer"
-                    />
+            {nextUpcomingSession && (
+                <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                        <label htmlFor="participant-link" className="text-sm font-medium text-blue-800 block">Participant Link for Next Session ({nextUpcomingSession.title})</label>
+                        <div className="mt-1 flex rounded-md shadow-sm">
+                            <input
+                                type="text"
+                                id="participant-link"
+                                readOnly
+                                value={participantLink || ''}
+                                className="block w-full text-sm text-blue-900 bg-white rounded-none rounded-l-md border-blue-200 focus:ring-primary focus:border-primary cursor-pointer"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => copyToClipboard(participantLink!, 'Participant')}
+                                className="relative -ml-px inline-flex items-center space-x-2 rounded-r-md border border-blue-300 bg-blue-100 px-4 py-2 text-sm font-medium text-blue-800 hover:bg-blue-200 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                            >
+                                <span>Copy</span>
+                            </button>
+                        </div>
+                    </div>
+                     <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                        <label htmlFor="host-link" className="text-sm font-medium text-green-800 block">Host Link for Next Session ({nextUpcomingSession.title})</label>
+                        <div className="mt-1 flex rounded-md shadow-sm">
+                             <input
+                                type="text"
+                                id="host-link"
+                                readOnly
+                                value={hostLink || ''}
+                                className="block w-full text-sm text-green-900 bg-white rounded-none rounded-l-md border-green-200 focus:ring-primary focus:border-primary cursor-pointer"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => copyToClipboard(hostLink!, 'Host')}
+                                className="relative -ml-px inline-flex items-center space-x-2 rounded-r-md border border-green-300 bg-green-100 px-4 py-2 text-sm font-medium text-green-800 hover:bg-green-200 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                            >
+                                <span>Copy</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 
