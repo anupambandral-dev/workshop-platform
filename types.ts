@@ -3,17 +3,17 @@
 // --- Database table shapes (based on your Supabase schema) ---
 
 export type Employee = {
-  id: string;
+  id: string; // This should be the auth.users.id for employees who can be hosts
   name: string;
   email: string;
   created_at: string;
 };
 
+// This type represents a host linked to a workshop. It's enriched with name/email on the client.
 export type Host = {
-  id: string;
-  workshop_id: string;
-  name: string;
-  email: string;
+  user_id: string;
+  name?: string;  // Optional: added on the client from the employees list
+  email?: string; // Optional: added on the client from the employees list
 };
 
 export type Participant = {
@@ -29,7 +29,6 @@ export type Feedback = {
   overall: number;
 };
 
-// New type for the host's reflection on the session
 export type HostReflection = {
   proactiveParticipantId: string;
   proactiveParticipantName: string;
@@ -45,7 +44,7 @@ export type SessionParticipantRecord = {
   session_id: string;
   participant_id: string;
   attendance: 'pending' | 'present';
-  feedback?: Feedback | null;      // Stored as JSONB in Supabase
+  feedback?: Feedback | null;
 };
 
 export type Session = {
@@ -57,7 +56,7 @@ export type Session = {
   start_time: string;
   end_time: string;
   status: 'scheduled' | 'live' | 'ended';
-  host_reflection?: HostReflection | null; // Stored as JSONB in Supabase
+  host_reflection?: HostReflection | null;
 };
 
 export type RawWorkshop = {
@@ -107,8 +106,8 @@ export interface AppContextType {
   logout: () => Promise<void>;
   addWorkshop: (
     workshopData: { title: string; total_sessions: number; weekday: string; time: string },
-    hosts: Omit<Host, 'id' | 'workshop_id'>[], 
-    participants: Omit<Participant, 'id' | 'workshop_id'>[]
+    hosts: Employee[], 
+    participants: Employee[]
   ) => Promise<void>;
   updateSession: (session: SessionWithRecords) => Promise<void>;
   deleteWorkshop: (workshopId: string) => Promise<void>;
@@ -121,146 +120,49 @@ export type Database = {
   public: {
     Tables: {
       employees: {
-        Row: {
-          id: string;
-          name: string;
-          email: string;
-          created_at: string;
-        };
-        Insert: {
-          name: string;
-          email: string;
-        };
-        Update: {
-          name?: string;
-          email?: string;
-        };
+        Row: Employee;
+        Insert: { name: string; email: string; };
+        Update: { name?: string; email?: string; };
       };
       chat_messages: {
-        Row: {
-          id: number;
-          session_id: string;
-          sender_id: string;
-          sender_name: string;
-          message: string;
-          created_at: string;
-        };
-        Insert: {
-          session_id: string;
-          sender_id: string;
-          sender_name: string;
-          message: string;
-        };
-        Update: {
-          session_id?: string;
-          sender_id?: string;
-          sender_name?: string;
-          message?: string;
-        };
+        Row: ChatMessage;
+        Insert: { session_id: string; sender_id: string; sender_name: string; message: string; };
+        Update: { session_id?: string; sender_id?: string; sender_name?: string; message?: string; };
       };
       hosts: {
         Row: {
           id: string;
           workshop_id: string;
-          name: string;
-          email: string;
+          user_id: string; // Correct schema
         };
         Insert: {
           workshop_id: string;
-          name: string;
-          email: string;
+          user_id: string; // Correct schema
         };
         Update: {
           workshop_id?: string;
-          name?: string;
-          email?: string;
+          user_id?: string; // Correct schema
         };
       };
       participants: {
-        Row: {
-          id: string;
-          workshop_id: string;
-          name: string;
-          email: string;
-        };
-        Insert: {
-          workshop_id: string;
-          name: string;
-          email: string;
-        };
-        Update: {
-          workshop_id?: string;
-          name?: string;
-          email?: string;
-        };
+        Row: Participant;
+        Insert: { workshop_id: string; name: string; email: string; };
+        Update: { workshop_id?: string; name?: string; email?: string; };
       };
       session_participant_records: {
-        Row: {
-          id: string;
-          session_id: string;
-          participant_id: string;
-          attendance: 'pending' | 'present';
-          feedback?: any;
-        };
-        Insert: {
-          session_id: string;
-          participant_id: string;
-          attendance?: 'pending' | 'present';
-          feedback?: any;
-        };
-        Update: {
-          attendance?: 'pending' | 'present';
-          feedback?: any;
-        };
+        Row: SessionParticipantRecord;
+        Insert: { session_id: string; participant_id: string; attendance: 'pending' | 'present'; feedback?: Feedback | null; };
+        Update: { session_id?: string; participant_id?: string; attendance?: 'pending' | 'present'; feedback?: Feedback | null; };
       };
       sessions: {
-        Row: {
-          id: string;
-          workshop_id: string;
-          session_number: number;
-          title: string;
-          date: string;
-          start_time: string;
-          end_time: string;
-          status: 'scheduled' | 'live' | 'ended';
-          host_reflection?: any;
-        };
-        Insert: {
-          workshop_id: string;
-          session_number: number;
-          title: string;
-          date: string;
-          start_time: string;
-          end_time: string;
-          status?: 'scheduled' | 'live' | 'ended';
-          host_reflection?: any;
-        };
-        Update: {
-          workshop_id?: string;
-          session_number?: number;
-          title?: string;
-          date?: string;
-          start_time?: string;
-          end_time?: string;
-          status?: 'scheduled' | 'live' | 'ended';
-          host_reflection?: any;
-        };
+        Row: Session;
+        Insert: { workshop_id: string; session_number: number; title: string; date: string; start_time: string; end_time: string; status: "scheduled" | "live" | "ended"; host_reflection?: HostReflection | null; };
+        Update: { workshop_id?: string; session_number?: number; title?: string; date?: string; start_time?: string; end_time?: string; status?: "scheduled" | "live" | "ended"; host_reflection?: HostReflection | null; };
       };
       workshops: {
-        Row: {
-          id: string;
-          title: string;
-          manager_id: string;
-          created_at: string;
-        };
-        Insert: {
-          title: string;
-          manager_id: string;
-        };
-        Update: {
-          title?: string;
-          manager_id?: string;
-        };
+        Row: RawWorkshop;
+        Insert: { title: string; manager_id: string; };
+        Update: { title?: string; manager_id?: string; };
       };
     };
     Views: {

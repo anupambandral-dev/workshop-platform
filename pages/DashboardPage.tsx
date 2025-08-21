@@ -1,13 +1,11 @@
-
-
 import React, { useState, useContext, useMemo } from 'react';
 import { AppContext } from '../App';
-import type { AppContextType, Workshop, Host, Participant, Employee } from '../types';
+import type { AppContextType, Workshop, Employee } from '../types';
 import { PlusIcon, UsersIcon, CalendarIcon, ClockIcon, XMarkIcon, TrashIcon, ExclamationTriangleIcon } from '../components/Icons';
 import { useNavigate } from 'react-router-dom';
 import UserSearchModal from '../components/UserSearchModal';
 
-const WorkshopCard: React.FC<{ workshop: Workshop, onDelete: () => void }> = ({ workshop, onDelete }) => {
+const WorkshopCard: React.FC<{ workshop: Workshop, onDelete: () => void, canDelete: boolean }> = ({ workshop, onDelete, canDelete }) => {
     const navigate = useNavigate();
     
     const nextSession = useMemo(() => 
@@ -43,13 +41,15 @@ const WorkshopCard: React.FC<{ workshop: Workshop, onDelete: () => void }> = ({ 
             onClick={() => navigate(`/workshop/${workshop.id}`)}
             className="bg-white p-6 rounded-lg shadow-md hover:shadow-xl transition-shadow cursor-pointer border border-gray-200 flex flex-col justify-between relative group"
         >
-            <button 
-                onClick={handleDelete}
-                className="absolute top-4 right-4 p-1.5 bg-gray-100 rounded-full text-gray-500 hover:bg-red-100 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-500"
-                aria-label="Delete workshop"
-            >
-                <TrashIcon className="h-5 w-5" />
-            </button>
+            {canDelete && (
+                <button 
+                    onClick={handleDelete}
+                    className="absolute top-4 right-4 p-1.5 bg-gray-100 rounded-full text-gray-500 hover:bg-red-100 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-500"
+                    aria-label="Delete workshop"
+                >
+                    <TrashIcon className="h-5 w-5" />
+                </button>
+            )}
 
             <div>
                 <div className="flex justify-between items-start">
@@ -61,7 +61,7 @@ const WorkshopCard: React.FC<{ workshop: Workshop, onDelete: () => void }> = ({ 
                 <div className="space-y-2 text-sm text-gray-500 mb-4">
                     <div className="flex items-center">
                         <CalendarIcon className="h-4 w-4 mr-1.5" />
-                        <span>{workshop.sessions.length} sessions</span>
+                        <span>{workshop.sessions.length} sessions hosted by {workshop.hosts.map(h => h.name).join(', ')}</span>
                     </div>
                      {nextSession && (
                         <div className="flex items-center">
@@ -110,10 +110,10 @@ const CreateWorkshopModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
         e.preventDefault();
         setIsCreating(true);
         const workshopData = { title, total_sessions: totalSessions, weekday, time };
-        const newHosts = selectedHosts.map(({ name, email }) => ({ name, email }));
-        const newParticipants = selectedParticipants.map(({ name, email }) => ({ name, email }));
+        
         try {
-            await addWorkshop(workshopData, newHosts, newParticipants);
+            // CRITICAL FIX: Pass the full Employee objects
+            await addWorkshop(workshopData, selectedHosts, selectedParticipants);
             onClose();
         } catch (error) {
             console.error(error);
@@ -276,6 +276,8 @@ const DashboardPage: React.FC = () => {
     const [workshopToDelete, setWorkshopToDelete] = useState<Workshop | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
 
+    const isManager = user?.role === 'manager';
+
     const { currentAndUpcoming, previous } = useMemo(() => {
         const sortedWorkshops = [...workshops].sort((a, b) => {
             const dateA = new Date(a.sessions[0]?.date || 0).getTime();
@@ -309,16 +311,18 @@ const DashboardPage: React.FC = () => {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div className="flex justify-between items-center mb-8">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900">Workshop Dashboard</h1>
+                    <h1 className="text-3xl font-bold text-gray-900">{isManager ? 'Manager Dashboard' : 'My Assigned Workshops'}</h1>
                     <p className="mt-1 text-lg text-gray-600">Welcome back, {user?.name}!</p>
                 </div>
-                <button
-                    onClick={() => setIsModalOpen(true)}
-                    className="flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-                >
-                    <PlusIcon className="h-5 w-5 mr-2" />
-                    Create Workshop
-                </button>
+                {isManager && (
+                    <button
+                        onClick={() => setIsModalOpen(true)}
+                        className="flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                    >
+                        <PlusIcon className="h-5 w-5 mr-2" />
+                        Create Workshop
+                    </button>
+                )}
             </div>
 
             {isModalOpen && <CreateWorkshopModal onClose={() => setIsModalOpen(false)} />}
@@ -337,12 +341,12 @@ const DashboardPage: React.FC = () => {
                     <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2 mb-6">Current & Upcoming</h2>
                     {currentAndUpcoming.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {currentAndUpcoming.map(ws => <WorkshopCard key={ws.id} workshop={ws} onDelete={() => setWorkshopToDelete(ws)} />)}
+                            {currentAndUpcoming.map(ws => <WorkshopCard key={ws.id} workshop={ws} onDelete={() => setWorkshopToDelete(ws)} canDelete={isManager} />)}
                         </div>
                     ) : (
                         <div className="text-center py-10 bg-white rounded-lg shadow-md border">
-                            <p className="text-gray-500">No current or upcoming workshops scheduled.</p>
-                             <button onClick={() => setIsModalOpen(true)} className="mt-4 text-sm font-medium text-primary hover:text-primary-700">Create your first workshop</button>
+                            <p className="text-gray-500">No current or upcoming workshops.</p>
+                             {isManager && <button onClick={() => setIsModalOpen(true)} className="mt-4 text-sm font-medium text-primary hover:text-primary-700">Create your first workshop</button>}
                         </div>
                     )}
                 </div>
@@ -351,7 +355,7 @@ const DashboardPage: React.FC = () => {
                     <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2 mb-6">Previous Workshops</h2>
                     {previous.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {previous.map(ws => <WorkshopCard key={ws.id} workshop={ws} onDelete={() => setWorkshopToDelete(ws)} />)}
+                            {previous.map(ws => <WorkshopCard key={ws.id} workshop={ws} onDelete={() => setWorkshopToDelete(ws)} canDelete={isManager} />)}
                         </div>
                     ) : (
                         <div className="text-center py-10 bg-white rounded-lg shadow-md border">

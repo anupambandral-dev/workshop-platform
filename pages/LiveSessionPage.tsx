@@ -67,7 +67,7 @@ const ParticipantsPanel: React.FC<{ hosts: Host[], participants: Participant[], 
             </h3>
             <ul className="divide-y max-h-96 overflow-y-auto">
                 {hosts.map(host => (
-                    <li key={host.id} className="p-3 flex items-center justify-between">
+                    <li key={host.user_id} className="p-3 flex items-center justify-between">
                         <span className="font-semibold text-gray-800">{host.name}</span>
                         <span className="px-2 py-0.5 text-xs font-medium text-primary-800 bg-primary-100 rounded-full">Host</span>
                     </li>

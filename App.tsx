@@ -1,7 +1,7 @@
-import React, { useState, useMemo, useCallback, useEffect, createContext, useContext } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, createContext } from 'react';
 import { HashRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { supabase } from './services/supabase';
-import type { AppContextType, Workshop, SessionUser, SessionWithRecords, Participant, Host, Employee, SessionParticipantRecord, Database } from './types';
+import type { AppContextType, Workshop, SessionUser, SessionWithRecords, Employee, SessionParticipantRecord, Host } from './types';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import JoinSessionPage from './pages/JoinSessionPage';
@@ -13,7 +13,9 @@ import { LogoIcon } from './components/Icons';
 export const AppContext = createContext<AppContextType | null>(null);
 
 const AppContent: React.FC = () => {
-    const { user, logout } = useContext(AppContext) as AppContextType;
+    const context = React.useContext(AppContext);
+    if (!context) throw new Error("AppContext not found");
+    const { user, logout } = context;
     const location = useLocation();
 
     // Hide logout on public-facing participant pages
@@ -60,8 +62,11 @@ const AppContent: React.FC = () => {
 }
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const { user, isLoading } = useContext(AppContext) as AppContextType;
-    if (isLoading) return <div className="p-10 text-center">Loading...</div>;
+    const context = React.useContext(AppContext);
+    if (!context) throw new Error("AppContext not found");
+    const { user, isLoading } = context;
+
+    if (isLoading) return <div className="p-10 text-center">Loading user session...</div>;
     if (!user) {
         return <Navigate to="/login" replace />;
     }
@@ -75,13 +80,13 @@ const App: React.FC = () => {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    const fetchWorkshops = useCallback(async () => {
+    const fetchWorkshops = useCallback(async (allEmployees: Employee[]) => {
         setIsLoading(true);
         const { data, error } = await supabase
             .from('workshops')
             .select(`
                 *,
-                hosts(*),
+                hosts(user_id),
                 participants(*),
                 sessions(*, session_participant_records(*))
             `)
@@ -90,8 +95,21 @@ const App: React.FC = () => {
         if (error) {
             console.error('Error fetching workshops:', error);
             setWorkshops([]);
+        } else if (data) {
+             const enrichedWorkshops = data.map(ws => ({
+                ...ws,
+                hosts: (ws.hosts as any[]).map(host => {
+                    const employee = allEmployees.find(emp => emp.id === host.user_id);
+                    return {
+                        user_id: host.user_id,
+                        name: employee?.name || 'Unknown Host',
+                        email: employee?.email || 'No email'
+                    };
+                }),
+            }));
+            setWorkshops(enrichedWorkshops as any);
         } else {
-            setWorkshops((data as any[]) || []);
+             setWorkshops([]);
         }
         setIsLoading(false);
     }, []);
@@ -101,225 +119,190 @@ const App: React.FC = () => {
         if (error) {
             console.error('Error fetching employees:', error);
             setEmployees([]);
+            return [];
         } else {
-            setEmployees((data as any) || []);
+            const employeeData = data || [];
+            setEmployees(employeeData);
+            return employeeData;
         }
     }, []);
-
-    useEffect(() => {
-        const getSession = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user) {
-                setUser({
-                    id: session.user.id,
-                    name: session.user.email?.split('@')[0] || 'Manager',
-                    email: session.user.email!,
-                    role: 'manager'
-                });
-                await fetchEmployees(); // Fetch employees for logged-in manager
-            }
-            // Fetch public workshop data regardless of login state
-            await fetchWorkshops();
-            setIsLoading(false);
-        };
-        getSession();
-
-        const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-            if (event === 'SIGNED_IN' && session?.user) {
-                 setUser({
-                    id: session.user.id,
-                    name: session.user.email?.split('@')[0] || 'Manager',
-                    email: session.user.email!,
-                    role: 'manager'
-                });
-                 fetchWorkshops(); // re-fetch workshops
-                 fetchEmployees(); // fetch employees
-            }
-            if (event === 'SIGNED_OUT') {
-                setUser(null);
-                setEmployees([]); // Clear employee data on logout
-                 fetchWorkshops(); // re-fetch public data
-            }
-        });
-
-        return () => {
-            authListener.subscription.unsubscribe();
-        };
+    
+    const setupUserSession = useCallback(async (session: any | null) => {
+        if (session?.user) {
+            const role = session.user.user_metadata?.role || 'host'; 
+            setUser({
+                id: session.user.id,
+                name: session.user.email?.split('@')[0] || 'User',
+                email: session.user.email!,
+                role: role
+            });
+            const allEmployees = await fetchEmployees();
+            await fetchWorkshops(allEmployees);
+        } else {
+             setUser(null);
+             // Fetch public data if needed, but RLS will handle filtering.
+             // We can fetch employees so search modals have context even if workshops are empty.
+             await fetchEmployees();
+             setWorkshops([]); // Clear workshops on logout
+        }
+        setIsLoading(false);
     }, [fetchWorkshops, fetchEmployees]);
 
-    const logout = useCallback(async () => {
+
+    useEffect(() => {
+        setIsLoading(true);
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setupUserSession(session);
+        });
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setupUserSession(session);
+        });
+
+        return () => subscription.unsubscribe();
+    }, [setupUserSession]);
+
+    const logout = async () => {
         await supabase.auth.signOut();
         setUser(null);
-    }, []);
-
-    const addWorkshop = useCallback(async (
-        workshopData: { title: string; total_sessions: number; weekday: string; time: string },
-        newHosts: Omit<Host, 'id' | 'workshop_id'>[],
-        newParticipants: Omit<Participant, 'id' | 'workshop_id'>[]
-    ) => {
+        setWorkshops([]);
+        setEmployees([]);
+    };
+    
+    const addWorkshop = async (workshopData: { title: string; total_sessions: number; weekday: string; time: string }, hosts: Employee[], participants: Employee[]) => {
         if (!user) throw new Error("User must be logged in to create a workshop.");
 
-        // 1. Create Workshop
-        const { data: workshop, error: workshopError } = await (supabase
-            .from('workshops') as any)
+        // 1. Create the workshop
+        const { data: workshop, error: workshopError } = await supabase
+            .from('workshops')
             .insert({ title: workshopData.title, manager_id: user.id })
             .select()
             .single();
-        if (workshopError) throw workshopError;
-        if (!workshop) throw new Error("Workshop creation failed.");
 
-        const workshopId = (workshop as any).id;
+        if (workshopError || !workshop) throw new Error(workshopError?.message || "Failed to create workshop.");
 
-        // 2. Add Hosts & Participants
-        const hostsToInsert = newHosts.map(h => ({ ...h, workshop_id: workshopId }));
-        const participantsToInsert = newParticipants.map(p => ({ ...p, workshop_id: workshopId }));
-
-        const [{ error: hostError }, { data: participants, error: participantError }] = await Promise.all([
-             (supabase.from('hosts') as any).insert(hostsToInsert),
-             (supabase.from('participants') as any).insert(participantsToInsert).select()
-        ]);
-
-        if (hostError) throw hostError;
-        if (participantError) throw participantError;
-        if (!participants) throw new Error("Failed to add participants.");
-
-        // 3. Generate and Add Sessions
-        const getNextDayOfWeek = (dayOfWeek: number): Date => {
-            const date = new Date();
-            date.setDate(date.getDate() + (dayOfWeek + 7 - date.getDay()) % 7);
-            if (date.getDay() === new Date().getDay() && date < new Date()) {
-                date.setDate(date.getDate() + 7);
-            }
-            return date;
-        };
-
-        const sessionsToInsert = [];
-        const dayOfWeek = parseInt(workshopData.weekday, 10);
-        let currentSessionDate = getNextDayOfWeek(dayOfWeek);
+        // 2. Generate Sessions
+        const sessionsToCreate = [];
+        let currentDate = new Date();
+        const targetWeekday = parseInt(workshopData.weekday, 10);
         
+        while (currentDate.getDay() !== targetWeekday) {
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+
         for (let i = 1; i <= workshopData.total_sessions; i++) {
-            sessionsToInsert.push({
-                workshop_id: workshopId,
+            sessionsToCreate.push({
+                workshop_id: workshop.id,
                 session_number: i,
                 title: `Session ${i}`,
-                date: currentSessionDate.toISOString().split('T')[0],
+                date: currentDate.toISOString().split('T')[0],
                 start_time: workshopData.time,
-                end_time: '17:00', // Placeholder
+                end_time: workshopData.time,
                 status: 'scheduled' as const,
             });
-            currentSessionDate.setDate(currentSessionDate.getDate() + 7);
+            currentDate.setDate(currentDate.getDate() + 7);
         }
-        
-        const { data: sessions, error: sessionError } = await (supabase.from('sessions') as any).insert(sessionsToInsert).select();
-        if (sessionError) throw sessionError;
-        if (!sessions) throw new Error("Failed to create sessions.");
 
-        // 4. Create participant records for each session
-        const participantRecordsToInsert = [];
-        for (const session of sessions as any[]) {
-            for (const participant of participants as any[]) {
-                participantRecordsToInsert.push({
-                    session_id: (session as any).id,
-                    participant_id: (participant as any).id,
-                    attendance: 'pending' as const,
-                    feedback: null,
+        const { data: sessions, error: sessionsError } = await supabase.from('sessions').insert(sessionsToCreate).select();
+        if (sessionsError || !sessions) throw new Error(sessionsError?.message || "Failed to create sessions.");
+
+        // 3. Add Hosts
+        const hostsToCreate = hosts.map(h => ({ workshop_id: workshop.id, user_id: h.id }));
+        const { error: hostsError } = await supabase.from('hosts').insert(hostsToCreate);
+        if (hostsError) throw new Error(hostsError.message);
+
+        // 4. Add Participants
+        const participantsToCreate = participants.map(p => ({ workshop_id: workshop.id, name: p.name, email: p.email }));
+        const { data: createdParticipants, error: participantsError } = await supabase.from('participants').insert(participantsToCreate).select();
+        if (participantsError || !createdParticipants) throw new Error(participantsError.message);
+        
+        // 5. Create participant records for each session
+        const recordsToCreate = [];
+        for (const session of sessions) {
+            for (const participant of createdParticipants) {
+                recordsToCreate.push({
+                    session_id: session.id,
+                    participant_id: participant.id,
+                    attendance: 'pending' as const
                 });
             }
         }
-        const { error: recordsError } = await (supabase.from('session_participant_records') as any).insert(participantRecordsToInsert);
-        if (recordsError) throw recordsError;
+        const { error: recordsError } = await supabase.from('session_participant_records').insert(recordsToCreate);
+        if (recordsError) throw new Error(recordsError.message);
 
-        await fetchWorkshops(); // Refresh data
-    }, [user, fetchWorkshops]);
+        // 6. Optimistic UI update
+        const newWorkshop = {
+            ...workshop,
+            hosts: hosts.map(h => ({ user_id: h.id, name: h.name, email: h.email })),
+            participants: createdParticipants,
+            sessions: sessions.map(s => ({
+                ...s,
+                session_participant_records: createdParticipants.map(p => ({
+                    session_id: s.id,
+                    participant_id: p.id,
+                    attendance: 'pending'
+                }))
+            }))
+        };
+        setWorkshops(prev => [newWorkshop as Workshop, ...prev]);
+    };
     
-    // Updates local state instantly for a fluid UI, then pushes to DB
-    const updateSession = useCallback(async (updatedSession: SessionWithRecords) => {
-        // Optimistic UI update
-        setWorkshops(prevWorkshops => {
-            return prevWorkshops.map(ws => {
-                if (ws.id !== updatedSession.workshop_id) return ws;
+    const updateSession = async (session: SessionWithRecords) => {
+        const { session_participant_records, ...sessionData } = session;
+        const { id: sessionId, ...sessionUpdateData } = sessionData;
+
+        const { error } = await supabase.from('sessions').update(sessionUpdateData).eq('id', sessionId);
+        if (error) throw error;
+
+        // also update records
+        for (const record of session_participant_records) {
+             const { id: recordId, ...recordUpdateData } = record;
+            const { error: recordError } = await supabase.from('session_participant_records').update(recordUpdateData).eq('id', recordId);
+            if (recordError) throw recordError;
+        }
+        updateSessionInState(session);
+    };
+
+    const deleteWorkshop = async (workshopId: string) => {
+        const { error } = await supabase.from('workshops').delete().eq('id', workshopId);
+        if (error) throw error;
+        setWorkshops(prev => prev.filter(ws => ws.id !== workshopId));
+    };
+    
+    const updateSessionInState = (updatedSession: SessionWithRecords) => {
+        setWorkshops(prev => prev.map(ws => {
+            if (ws.id === updatedSession.workshop_id) {
                 return {
                     ...ws,
                     sessions: ws.sessions.map(s => s.id === updatedSession.id ? updatedSession : s)
                 };
-            });
-        });
-        
-        // Push changes to DB
-        const sessionUpdateData: Database['public']['Tables']['sessions']['Update'] = {
-            title: updatedSession.title,
-            date: updatedSession.date,
-            start_time: updatedSession.start_time,
-            end_time: updatedSession.end_time,
-            status: updatedSession.status,
-            host_reflection: updatedSession.host_reflection
-        };
-        const { error } = await supabase
-            .from('sessions')
-            .update(sessionUpdateData)
-            .eq('id', updatedSession.id);
-
-        if (error) {
-            console.error("Error updating session, reverting UI:", error);
-            fetchWorkshops(); // Revert on failure
-            throw error;
-        }
-
-        // Also update all participant records
-        for (const record of updatedSession.session_participant_records) {
-             const recordUpdateData: Database['public']['Tables']['session_participant_records']['Update'] = {
-                attendance: record.attendance,
-                feedback: record.feedback
-             };
-             const { error: recordError } = await supabase
-                .from('session_participant_records')
-                .update(recordUpdateData)
-                .eq('id', record.id);
-            if (recordError) console.error("Error updating record:", recordError);
-        }
-    }, [fetchWorkshops]);
-
-    const deleteWorkshop = useCallback(async (workshopId: string) => {
-        // Optimistic UI update
-        const originalWorkshops = workshops;
-        setWorkshops(prev => prev.filter(w => w.id !== workshopId));
-
-        const { error } = await supabase
-            .from('workshops')
-            .delete()
-            .eq('id', workshopId);
-
-        if (error) {
-            console.error('Error deleting workshop:', error);
-            alert('Failed to delete workshop. Restoring data.');
-            setWorkshops(originalWorkshops); // Revert on failure
-            throw error;
-        }
-    }, [workshops]);
-
-    const updateSessionInState = useCallback((updatedSession: SessionWithRecords) => {
-        setWorkshops(prev => prev.map(w => w.id === updatedSession.workshop_id 
-            ? { ...w, sessions: w.sessions.map(s => s.id === updatedSession.id ? updatedSession : s) } 
-            : w
-        ));
-    }, []);
-    
-    const updateParticipantRecordInState = useCallback((updatedRecord: SessionParticipantRecord) => {
-        setWorkshops(prev => prev.map(w => {
-            const session = w.sessions.find(s => s.id === updatedRecord.session_id);
-            if (!session) return w;
-            
-            return {
-                ...w,
-                sessions: w.sessions.map(s => s.id === updatedRecord.session_id 
-                    ? { ...s, session_participant_records: s.session_participant_records.map(r => r.id === updatedRecord.id ? updatedRecord : r) } 
-                    : s
-                )
-            };
+            }
+            return ws;
         }));
-    }, []);
+    };
+    
+    const updateParticipantRecordInState = (updatedRecord: SessionParticipantRecord) => {
+         setWorkshops(prev => prev.map(ws => {
+            const sessionToUpdate = ws.sessions.find(s => s.id === updatedRecord.session_id);
+            if (sessionToUpdate) {
+                return {
+                    ...ws,
+                    sessions: ws.sessions.map(s => {
+                        if (s.id === updatedRecord.session_id) {
+                            return {
+                                ...s,
+                                session_participant_records: s.session_participant_records.map(r => r.id === updatedRecord.id ? updatedRecord : r)
+                            };
+                        }
+                        return s;
+                    })
+                };
+            }
+            return ws;
+        }));
+    };
 
-    const appContextValue = useMemo(() => ({
+    const value = useMemo(() => ({
         user,
         workshops,
         employees,
@@ -329,11 +312,11 @@ const App: React.FC = () => {
         updateSession,
         deleteWorkshop,
         updateSessionInState,
-        updateParticipantRecordInState,
-    }), [user, workshops, employees, isLoading, logout, addWorkshop, updateSession, deleteWorkshop, updateSessionInState, updateParticipantRecordInState]);
+        updateParticipantRecordInState
+    }), [user, workshops, employees, isLoading]);
 
     return (
-        <AppContext.Provider value={appContextValue}>
+        <AppContext.Provider value={value}>
             <HashRouter>
                 <AppContent />
             </HashRouter>
