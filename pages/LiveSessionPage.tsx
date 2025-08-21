@@ -275,7 +275,7 @@ const LiveSessionPage: React.FC = () => {
         const fetchChat = async () => {
             const { data, error } = await supabase.from('chat_messages').select('*').eq('session_id', session.id).order('created_at');
             if (error) console.error("Error fetching chat:", error);
-            else setChatMessages(data || []);
+            else setChatMessages((data as any) || []);
         };
         fetchChat();
 
@@ -300,7 +300,7 @@ const LiveSessionPage: React.FC = () => {
             sender_name: currentUser.name,
             message: message,
         };
-        const { error } = await supabase.from('chat_messages').insert(newMessage);
+        const { error } = await (supabase.from('chat_messages') as any).insert(newMessage);
         if (error) console.error("Error sending message:", error);
     };
 
