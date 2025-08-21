@@ -1,15 +1,13 @@
 // Types for the application, designed to work with Supabase
 
-// --- Generic JSON type for Supabase ---
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[];
-
 // --- Database table shapes (based on your Supabase schema) ---
+
+export type Employee = {
+  id: string;
+  name: string;
+  email: string;
+  created_at: string;
+};
 
 export type Host = {
   id: string;
@@ -42,8 +40,8 @@ export type SessionParticipantRecord = {
   session_id: string;
   participant_id: string;
   attendance: 'pending' | 'present';
-  feedback?: Json | null;      // Stored as JSONB in Supabase
-  evaluation?: Json | null;    // Stored as JSONB in Supabase
+  feedback?: Feedback | null;      // Stored as JSONB in Supabase
+  evaluation?: Evaluation | null;    // Stored as JSONB in Supabase
 };
 
 export type Session = {
@@ -99,6 +97,7 @@ export interface SessionUser {
 export interface AppContextType {
   user: SessionUser | null;
   workshops: Workshop[];
+  employees: Employee[];
   isLoading: boolean;
   logout: () => Promise<void>;
   addWorkshop: (
@@ -113,8 +112,31 @@ export interface AppContextType {
 export type Database = {
   public: {
     Tables: {
+      employees: {
+        Row: {
+          id: string;
+          name: string;
+          email: string;
+          created_at: string;
+        };
+        Insert: {
+          name: string;
+          email: string;
+        };
+        Update: {
+          name?: string;
+          email?: string;
+        };
+      };
       chat_messages: {
-        Row: ChatMessage;
+        Row: {
+          id: number;
+          session_id: string;
+          sender_id: string;
+          sender_name: string;
+          message: string;
+          created_at: string;
+        };
         Insert: {
           session_id: string;
           sender_id: string;
@@ -129,7 +151,12 @@ export type Database = {
         };
       };
       hosts: {
-        Row: Host;
+        Row: {
+          id: string;
+          workshop_id: string;
+          name: string;
+          email: string;
+        };
         Insert: {
           workshop_id: string;
           name: string;
@@ -142,7 +169,12 @@ export type Database = {
         };
       };
       participants: {
-        Row: Participant;
+        Row: {
+          id: string;
+          workshop_id: string;
+          name: string;
+          email: string;
+        };
         Insert: {
           workshop_id: string;
           name: string;
@@ -155,24 +187,38 @@ export type Database = {
         };
       };
       session_participant_records: {
-        Row: SessionParticipantRecord;
+        Row: {
+          id: string;
+          session_id: string;
+          participant_id: string;
+          attendance: 'pending' | 'present';
+          feedback?: Feedback | null;
+          evaluation?: Evaluation | null;
+        };
         Insert: {
           session_id: string;
           participant_id: string;
           attendance: 'pending' | 'present';
-          feedback?: Json | null;
-          evaluation?: Json | null;
+          feedback?: Feedback | null;
+          evaluation?: Evaluation | null;
         };
         Update: {
-          session_id?: string;
-          participant_id?: string;
           attendance?: 'pending' | 'present';
-          feedback?: Json | null;
-          evaluation?: Json | null;
+          feedback?: Feedback | null;
+          evaluation?: Evaluation | null;
         };
       };
       sessions: {
-        Row: Session;
+        Row: {
+          id: string;
+          workshop_id: string;
+          session_number: number;
+          title: string;
+          date: string;
+          start_time: string;
+          end_time: string;
+          status: 'scheduled' | 'live' | 'ended';
+        };
         Insert: {
           workshop_id: string;
           session_number: number;
@@ -193,7 +239,12 @@ export type Database = {
         };
       };
       workshops: {
-        Row: RawWorkshop;
+        Row: {
+          id: string;
+          title: string;
+          manager_id: string;
+          created_at: string;
+        };
         Insert: {
           title: string;
           manager_id: string;

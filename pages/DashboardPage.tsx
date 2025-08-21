@@ -1,8 +1,10 @@
+
 import React, { useState, useContext, useMemo } from 'react';
 import { AppContext } from '../App';
-import type { AppContextType, Workshop, Host, Participant } from '../types';
-import { PlusIcon, UsersIcon, CalendarIcon, ClockIcon, TrashIcon } from '../components/Icons';
+import type { AppContextType, Workshop, Host, Participant, Employee } from '../types';
+import { PlusIcon, UsersIcon, CalendarIcon, ClockIcon, XMarkIcon } from '../components/Icons';
 import { useNavigate } from 'react-router-dom';
+import UserSearchModal from '../components/UserSearchModal';
 
 const WorkshopCard: React.FC<{ workshop: Workshop }> = ({ workshop }) => {
     const navigate = useNavigate();
@@ -55,37 +57,28 @@ const WorkshopCard: React.FC<{ workshop: Workshop }> = ({ workshop }) => {
 };
 
 const CreateWorkshopModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-    const { addWorkshop } = useContext(AppContext) as AppContextType;
+    const { addWorkshop, employees } = useContext(AppContext) as AppContextType;
     const [title, setTitle] = useState('');
     const [totalSessions, setTotalSessions] = useState(1);
     const [weekday, setWeekday] = useState('1'); // Monday
     const [time, setTime] = useState('10:00');
-    const [hosts, setHosts] = useState([{ name: '', email: '' }]);
-    const [participants, setParticipants] = useState([{ name: '', email: '' }]);
+    
+    const [selectedHosts, setSelectedHosts] = useState<Employee[]>([]);
+    const [selectedParticipants, setSelectedParticipants] = useState<Employee[]>([]);
+    
+    const [isHostModalOpen, setIsHostModalOpen] = useState(false);
+    const [isParticipantModalOpen, setIsParticipantModalOpen] = useState(false);
+    
     const [isCreating, setIsCreating] = useState(false);
 
-    const handleAddHost = () => setHosts([...hosts, { name: '', email: '' }]);
-    const handleRemoveHost = (index: number) => setHosts(hosts.filter((_, i) => i !== index));
-    const handleHostChange = (index: number, field: 'name' | 'email', value: string) => {
-        const newHosts = [...hosts];
-        newHosts[index][field] = value;
-        setHosts(newHosts);
-    };
-
-    const handleAddParticipant = () => setParticipants([...participants, { name: '', email: '' }]);
-    const handleRemoveParticipant = (index: number) => setParticipants(participants.filter((_, i) => i !== index));
-    const handleParticipantChange = (index: number, field: 'name' | 'email', value: string) => {
-        const newParticipants = [...participants];
-        newParticipants[index][field] = value;
-        setParticipants(newParticipants);
-    };
-    
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsCreating(true);
         const workshopData = { title, total_sessions: totalSessions, weekday, time };
+        const newHosts = selectedHosts.map(({ name, email }) => ({ name, email }));
+        const newParticipants = selectedParticipants.map(({ name, email }) => ({ name, email }));
         try {
-            await addWorkshop(workshopData, hosts, participants);
+            await addWorkshop(workshopData, newHosts, newParticipants);
             onClose();
         } catch (error) {
             console.error(error);
@@ -94,6 +87,16 @@ const CreateWorkshopModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
             setIsCreating(false);
         }
     };
+
+    const UserTag: React.FC<{ user: Employee, onRemove: () => void }> = ({ user, onRemove }) => (
+        <span className="inline-flex items-center gap-x-2 rounded-md bg-gray-100 px-2.5 py-1 text-sm font-medium text-gray-700">
+            {user.name}
+            <button type="button" onClick={onRemove} className="group relative -mr-1 h-3.5 w-3.5 rounded-sm hover:bg-gray-500/20">
+                <span className="sr-only">Remove</span>
+                <XMarkIcon className="h-3.5 w-3.5 text-gray-500 group-hover:text-gray-700" />
+            </button>
+        </span>
+    );
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
@@ -133,38 +136,22 @@ const CreateWorkshopModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
 
                         <fieldset className="border-t border-gray-200 pt-4">
                             <legend className="text-lg font-medium text-gray-900">Hosts</legend>
-                            <div className="mt-2 space-y-4">
-                                {hosts.map((host, index) => (
-                                    <div key={index} className="flex items-center gap-4">
-                                        <input type="text" placeholder="Host Name" value={host.name} onChange={e => handleHostChange(index, 'name', e.target.value)} required className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
-                                        <input type="email" placeholder="Host Email" value={host.email} onChange={e => handleHostChange(index, 'email', e.target.value)} required className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
-                                        <button type="button" onClick={() => handleRemoveHost(index)} disabled={hosts.length === 1} className="p-2 text-gray-500 hover:text-red-600 disabled:text-gray-300 disabled:cursor-not-allowed">
-                                            <TrashIcon className="h-5 w-5" />
-                                        </button>
-                                    </div>
-                                ))}
-                                <button type="button" onClick={handleAddHost} className="text-sm font-medium text-primary hover:text-primary-700 flex items-center">
-                                    <PlusIcon className="h-4 w-4 mr-1" /> Add Host
-                                </button>
+                            <div className="mt-2 p-2 min-h-[50px] bg-gray-50 rounded-md border flex flex-wrap gap-2">
+                                {selectedHosts.map(host => <UserTag key={host.id} user={host} onRemove={() => setSelectedHosts(selectedHosts.filter(h => h.id !== host.id))} />)}
                             </div>
+                            <button type="button" onClick={() => setIsHostModalOpen(true)} className="mt-2 text-sm font-medium text-primary hover:text-primary-700 flex items-center">
+                                <PlusIcon className="h-4 w-4 mr-1" /> Add Host
+                            </button>
                         </fieldset>
 
                          <fieldset className="border-t border-gray-200 pt-4">
                             <legend className="text-lg font-medium text-gray-900">Participants</legend>
-                             <div className="mt-2 space-y-4">
-                                {participants.map((p, index) => (
-                                    <div key={index} className="flex items-center gap-4">
-                                        <input type="text" placeholder="Participant Name" value={p.name} onChange={e => handleParticipantChange(index, 'name', e.target.value)} required className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
-                                        <input type="email" placeholder="Participant Email" value={p.email} onChange={e => handleParticipantChange(index, 'email', e.target.value)} required className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
-                                        <button type="button" onClick={() => handleRemoveParticipant(index)} disabled={participants.length === 1} className="p-2 text-gray-500 hover:text-red-600 disabled:text-gray-300 disabled:cursor-not-allowed">
-                                            <TrashIcon className="h-5 w-5" />
-                                        </button>
-                                    </div>
-                                ))}
-                                <button type="button" onClick={handleAddParticipant} className="text-sm font-medium text-primary hover:text-primary-700 flex items-center">
-                                    <PlusIcon className="h-4 w-4 mr-1" /> Add Participant
-                                </button>
+                             <div className="mt-2 p-2 min-h-[50px] bg-gray-50 rounded-md border flex flex-wrap gap-2">
+                                {selectedParticipants.map(p => <UserTag key={p.id} user={p} onRemove={() => setSelectedParticipants(selectedParticipants.filter(sp => sp.id !== p.id))} />)}
                             </div>
+                            <button type="button" onClick={() => setIsParticipantModalOpen(true)} className="mt-2 text-sm font-medium text-primary hover:text-primary-700 flex items-center">
+                                <PlusIcon className="h-4 w-4 mr-1" /> Add Participant
+                            </button>
                         </fieldset>
                     </div>
                     <div className="p-4 bg-gray-50 flex justify-end space-x-3 sticky bottom-0 z-10">
@@ -175,6 +162,30 @@ const CreateWorkshopModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
                     </div>
                 </form>
             </div>
+            {isHostModalOpen && (
+                <UserSearchModal 
+                    allUsers={employees}
+                    alreadySelected={selectedHosts.concat(selectedParticipants)}
+                    onClose={() => setIsHostModalOpen(false)}
+                    onSelect={(user) => {
+                        setSelectedHosts([...selectedHosts, user]);
+                        setIsHostModalOpen(false);
+                    }}
+                    title="Add Host"
+                />
+            )}
+             {isParticipantModalOpen && (
+                <UserSearchModal 
+                    allUsers={employees}
+                    alreadySelected={selectedHosts.concat(selectedParticipants)}
+                    onClose={() => setIsParticipantModalOpen(false)}
+                    onSelect={(user) => {
+                        setSelectedParticipants([...selectedParticipants, user]);
+                        setIsParticipantModalOpen(false);
+                    }}
+                    title="Add Participant"
+                />
+            )}
         </div>
     );
 };

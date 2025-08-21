@@ -1,3 +1,4 @@
+
 import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
@@ -8,7 +9,7 @@ type Tab = 'details' | 'go-live' | 'attendance';
 
 const SessionDetailPage: React.FC = () => {
     const { workshopId, sessionId } = useParams<{ workshopId: string, sessionId: string }>();
-    const { workshops, updateSession } = useContext(AppContext) as AppContextType;
+    const { workshops, updateSession, user } = useContext(AppContext) as AppContextType;
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState<Tab>('details');
     
@@ -65,8 +66,10 @@ const SessionDetailPage: React.FC = () => {
     };
 
     const handleGoLive = async () => {
-        if (session) {
+        if (session && user) {
             await updateSession({ ...session, status: 'live' });
+            // Critical fix: Set the session user for the manager/host
+            sessionStorage.setItem('workshop_session_user', JSON.stringify(user));
             navigate(`/session/${session.id}/live`);
         }
     };

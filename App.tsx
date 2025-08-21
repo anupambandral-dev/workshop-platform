@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect, createContext } from 'react';
 import { HashRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { supabase } from './services/supabase';
-import type { AppContextType, Workshop, SessionUser, SessionWithRecords, Participant, Host } from './types';
+import type { AppContextType, Workshop, SessionUser, SessionWithRecords, Participant, Host, Employee } from './types';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import JoinSessionPage from './pages/JoinSessionPage';
@@ -9,13 +9,13 @@ import LiveSessionPage from './pages/LiveSessionPage';
 import WorkshopDetailPage from './pages/WorkshopDetailPage';
 import SessionDetailPage from './pages/SessionDetailPage';
 import { LogoIcon } from './components/Icons';
-import { Session } from '@supabase/supabase-js';
 
 export const AppContext = createContext<AppContextType | null>(null);
 
 const App: React.FC = () => {
     const [user, setUser] = useState<SessionUser | null>(null);
     const [workshops, setWorkshops] = useState<Workshop[]>([]);
+    const [employees, setEmployees] = useState<Employee[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     const fetchWorkshops = useCallback(async () => {
@@ -39,6 +39,16 @@ const App: React.FC = () => {
         setIsLoading(false);
     }, []);
 
+    const fetchEmployees = useCallback(async () => {
+        const { data, error } = await supabase.from('employees').select('*');
+        if (error) {
+            console.error('Error fetching employees:', error);
+            setEmployees([]);
+        } else {
+            setEmployees(data);
+        }
+    }, []);
+
     useEffect(() => {
         const getSession = async () => {
             const { data: { session } } = await supabase.auth.getSession();
@@ -49,6 +59,7 @@ const App: React.FC = () => {
                     email: session.user.email!,
                     role: 'manager'
                 });
+                await fetchEmployees(); // Fetch employees for logged-in manager
             }
             // Fetch public workshop data regardless of login state
             await fetchWorkshops();
@@ -64,10 +75,12 @@ const App: React.FC = () => {
                     email: session.user.email!,
                     role: 'manager'
                 });
-                 fetchWorkshops(); // re-fetch as logged-in user
+                 fetchWorkshops(); // re-fetch workshops
+                 fetchEmployees(); // fetch employees
             }
             if (event === 'SIGNED_OUT') {
                 setUser(null);
+                setEmployees([]); // Clear employee data on logout
                  fetchWorkshops(); // re-fetch public data
             }
         });
@@ -75,7 +88,7 @@ const App: React.FC = () => {
         return () => {
             authListener.subscription.unsubscribe();
         };
-    }, [fetchWorkshops]);
+    }, [fetchWorkshops, fetchEmployees]);
 
     const logout = useCallback(async () => {
         await supabase.auth.signOut();
@@ -161,8 +174,7 @@ const App: React.FC = () => {
     }, [user, fetchWorkshops]);
     
     const updateSession = useCallback(async (updatedSession: SessionWithRecords) => {
-        // Update session table
-        const { id, workshop_id, session_number, title, date, start_time, end_time, status } = updatedSession;
+        const { id, title, date, start_time, end_time, status } = updatedSession;
         const { error: sessionUpdateError } = await supabase
             .from('sessions')
             .update({ title, date, start_time, end_time, status })
@@ -170,7 +182,6 @@ const App: React.FC = () => {
 
         if (sessionUpdateError) throw sessionUpdateError;
 
-        // Update participant records
         for (const record of updatedSession.session_participant_records) {
              const { id: recordId, attendance, feedback, evaluation } = record;
              const { error: recordUpdateError } = await supabase
@@ -180,17 +191,28 @@ const App: React.FC = () => {
             if (recordUpdateError) console.error("Error updating record:", recordUpdateError);
         }
 
-        await fetchWorkshops(); // Fetch all workshops to ensure consistency
-    }, [fetchWorkshops]);
+        setWorkshops(prevWorkshops => {
+            return prevWorkshops.map(ws => {
+                const sessionIndex = ws.sessions.findIndex(s => s.id === updatedSession.id);
+                if (sessionIndex > -1) {
+                    const newSessions = [...ws.sessions];
+                    newSessions[sessionIndex] = updatedSession;
+                    return { ...ws, sessions: newSessions };
+                }
+                return ws;
+            });
+        });
+    }, []);
 
     const appContextValue = useMemo(() => ({
         user,
         workshops,
+        employees,
         isLoading,
         logout,
         addWorkshop,
         updateSession,
-    }), [user, workshops, isLoading, logout, addWorkshop, updateSession]);
+    }), [user, workshops, employees, isLoading, logout, addWorkshop, updateSession]);
 
     const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         if (isLoading) return <div className="p-10 text-center">Loading...</div>;

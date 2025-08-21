@@ -2,7 +2,7 @@ import React, { useState, useContext, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
 import { supabase } from '../services/supabase';
-import type { AppContextType, Workshop, ChatMessage, Participant, Feedback, SessionUser, Evaluation, Host, SessionWithRecords, Json } from '../types';
+import type { AppContextType, Workshop, ChatMessage, Participant, Feedback, SessionUser, Evaluation, Host, SessionWithRecords } from '../types';
 import { UsersIcon, SendIcon, CheckCircleIcon } from '../components/Icons';
 
 // --- Helper Components ---
@@ -131,11 +131,11 @@ const FeedbackForm: React.FC<{ workshopTitle: string, sessionTitle: string, onSu
 };
 const EvaluationModal: React.FC<{ 
     participant: Participant, 
-    evaluation: Json | null,
+    evaluation: Evaluation | null,
     onClose: () => void, 
     onSubmit: (participantId: string, evaluation: Evaluation) => void 
 }> = ({ participant, evaluation, onClose, onSubmit }) => {
-    const initialEvaluation = evaluation as Evaluation | null;
+    const initialEvaluation = evaluation;
     const [active, setActive] = useState(initialEvaluation?.active || 3);
     const [valueAdded, setValueAdded] = useState(initialEvaluation?.valueAdded || 3);
     const [overall, setOverall] = useState(initialEvaluation?.overall || 3);
