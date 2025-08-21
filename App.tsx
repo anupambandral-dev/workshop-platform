@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect, createContext, useContext } from 'react';
 import { HashRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { supabase } from './services/supabase';
-import type { AppContextType, Workshop, SessionUser, SessionWithRecords, Participant, Host, Employee } from './types';
+import type { AppContextType, Workshop, SessionUser, SessionWithRecords, Participant, Host, Employee, SessionParticipantRecord, Database } from './types';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import JoinSessionPage from './pages/JoinSessionPage';
@@ -232,35 +232,73 @@ const App: React.FC = () => {
         await fetchWorkshops(); // Refresh data
     }, [user, fetchWorkshops]);
     
+    // Updates local state instantly for a fluid UI, then pushes to DB
     const updateSession = useCallback(async (updatedSession: SessionWithRecords) => {
-        const { id, title, date, start_time, end_time, status, host_reflection } = updatedSession;
-        const { error: sessionUpdateError } = await (supabase
-            .from('sessions') as any)
-            .update({ title, date, start_time, end_time, status, host_reflection })
-            .eq('id', id);
-
-        if (sessionUpdateError) throw sessionUpdateError;
-
-        for (const record of updatedSession.session_participant_records) {
-             const { id: recordId, attendance, feedback } = record;
-             const { error: recordUpdateError } = await (supabase
-                .from('session_participant_records') as any)
-                .update({ attendance, feedback })
-                .eq('id', recordId);
-            if (recordUpdateError) console.error("Error updating record:", recordUpdateError);
-        }
-
+        // Optimistic UI update
         setWorkshops(prevWorkshops => {
             return prevWorkshops.map(ws => {
-                const sessionIndex = ws.sessions.findIndex(s => s.id === updatedSession.id);
-                if (sessionIndex > -1) {
-                    const newSessions = [...ws.sessions];
-                    newSessions[sessionIndex] = updatedSession;
-                    return { ...ws, sessions: newSessions };
-                }
-                return ws;
+                if (ws.id !== updatedSession.workshop_id) return ws;
+                return {
+                    ...ws,
+                    sessions: ws.sessions.map(s => s.id === updatedSession.id ? updatedSession : s)
+                };
             });
         });
+        
+        // Push changes to DB
+        const sessionUpdateData: Database['public']['Tables']['sessions']['Update'] = {
+            title: updatedSession.title,
+            date: updatedSession.date,
+            start_time: updatedSession.start_time,
+            end_time: updatedSession.end_time,
+            status: updatedSession.status,
+            host_reflection: updatedSession.host_reflection
+        };
+        const { error } = await supabase
+            .from('sessions')
+            .update(sessionUpdateData)
+            .eq('id', updatedSession.id);
+
+        if (error) {
+            console.error("Error updating session, reverting UI:", error);
+            fetchWorkshops(); // Revert on failure
+            throw error;
+        }
+
+        // Also update all participant records
+        for (const record of updatedSession.session_participant_records) {
+             const recordUpdateData: Database['public']['Tables']['session_participant_records']['Update'] = {
+                attendance: record.attendance,
+                feedback: record.feedback
+             };
+             const { error: recordError } = await supabase
+                .from('session_participant_records')
+                .update(recordUpdateData)
+                .eq('id', record.id);
+            if (recordError) console.error("Error updating record:", recordError);
+        }
+    }, [fetchWorkshops]);
+
+    const updateSessionInState = useCallback((updatedSession: SessionWithRecords) => {
+        setWorkshops(prev => prev.map(w => w.id === updatedSession.workshop_id 
+            ? { ...w, sessions: w.sessions.map(s => s.id === updatedSession.id ? updatedSession : s) } 
+            : w
+        ));
+    }, []);
+    
+    const updateParticipantRecordInState = useCallback((updatedRecord: SessionParticipantRecord) => {
+        setWorkshops(prev => prev.map(w => {
+            const session = w.sessions.find(s => s.id === updatedRecord.session_id);
+            if (!session) return w;
+            
+            return {
+                ...w,
+                sessions: w.sessions.map(s => s.id === updatedRecord.session_id 
+                    ? { ...s, session_participant_records: s.session_participant_records.map(r => r.id === updatedRecord.id ? updatedRecord : r) } 
+                    : s
+                )
+            };
+        }));
     }, []);
 
     const appContextValue = useMemo(() => ({
@@ -271,7 +309,9 @@ const App: React.FC = () => {
         logout,
         addWorkshop,
         updateSession,
-    }), [user, workshops, employees, isLoading, logout, addWorkshop, updateSession]);
+        updateSessionInState,
+        updateParticipantRecordInState,
+    }), [user, workshops, employees, isLoading, logout, addWorkshop, updateSession, updateSessionInState, updateParticipantRecordInState]);
 
     return (
         <AppContext.Provider value={appContextValue}>
