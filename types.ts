@@ -151,12 +151,12 @@ export type Database = {
       };
       session_participant_records: {
         Row: SessionParticipantRecord;
-        Insert: { session_id: string; participant_id: string; attendance: 'pending' | 'present'; feedback?: Feedback | null; };
+        Insert: { session_id: string; participant_id: string; attendance: 'pending' | 'present'; };
         Update: { session_id?: string; participant_id?: string; attendance?: 'pending' | 'present'; feedback?: Feedback | null; };
       };
       sessions: {
         Row: Session;
-        Insert: { workshop_id: string; session_number: number; title: string; date: string; start_time: string; end_time: string; status: "scheduled" | "live" | "ended"; host_reflection?: HostReflection | null; };
+        Insert: { workshop_id: string; session_number: number; title: string; date: string; start_time: string; end_time: string; status: "scheduled" | "live" | "ended"; };
         Update: { workshop_id?: string; session_number?: number; title?: string; date?: string; start_time?: string; end_time?: string; status?: "scheduled" | "live" | "ended"; host_reflection?: HostReflection | null; };
       };
       workshops: {
