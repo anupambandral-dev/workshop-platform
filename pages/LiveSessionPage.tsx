@@ -194,7 +194,7 @@ const EvaluationPanel: React.FC<{ workshop: Workshop, session: SessionWithRecord
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-6">
                 {workshop.participants.map(p => {
                     const record = session.session_participant_records.find(r => r.participant_id === p.id);
-                    const evaluation = record?.evaluation as Evaluation | null;
+                    const evaluation = record?.evaluation;
                     return (
                         <button key={p.id} onClick={() => setSelectedParticipant(p)} className={`p-4 text-left border rounded-lg flex items-center justify-between transition-all ${evaluation ? 'border-green-300 bg-green-50 hover:bg-green-100' : 'border-gray-300 bg-white hover:bg-gray-50'}`} aria-label={`Evaluate ${p.name}`}>
                             <div>
@@ -208,7 +208,7 @@ const EvaluationPanel: React.FC<{ workshop: Workshop, session: SessionWithRecord
             </div>
             {selectedParticipant && <EvaluationModal 
                 participant={selectedParticipant} 
-                evaluation={session.session_participant_records.find(r => r.participant_id === selectedParticipant.id)?.evaluation as Evaluation | null}
+                evaluation={session.session_participant_records.find(r => r.participant_id === selectedParticipant.id)?.evaluation ?? null}
                 onClose={() => setSelectedParticipant(null)} 
                 onSubmit={handleSave} 
             />}
