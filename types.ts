@@ -1,19 +1,20 @@
-// Types for the application, designed to work with Supabase
+// Types for the application, designed for the flexible role model
 
 // --- Database table shapes (based on your Supabase schema) ---
 
 export type Employee = {
-  id: string; // This should be the auth.users.id for employees who can be hosts
+  id: string; // This can be any unique ID from your system, e.g., auth.users.id
   name: string;
   email: string;
   created_at: string;
 };
 
-// This type represents a host linked to a workshop. It's enriched with name/email on the client.
+// Host is now structurally the same as a Participant for a given workshop
 export type Host = {
-  user_id: string;
-  name?: string;  // Optional: added on the client from the employees list
-  email?: string; // Optional: added on the client from the employees list
+  id: string;
+  workshop_id: string;
+  name: string;
+  email: string;
 };
 
 export type Participant = {
@@ -21,12 +22,6 @@ export type Participant = {
   workshop_id: string;
   name: string;
   email: string;
-};
-
-export type Feedback = {
-  interactive: number;
-  helpful: number;
-  overall: number;
 };
 
 export type HostReflection = {
@@ -44,7 +39,11 @@ export type SessionParticipantRecord = {
   session_id: string;
   participant_id: string;
   attendance: 'pending' | 'present';
-  feedback?: Feedback | null;
+  feedback?: {
+    interactive: number;
+    helpful: number;
+    overall: number;
+  } | null;
 };
 
 export type Session = {
@@ -91,6 +90,15 @@ export type Workshop = RawWorkshop & {
 
 // --- User and Context types ---
 
+// Represents the currently logged-in manager
+export interface ManagerUser {
+  id: string;
+  name: string;
+  email: string;
+  role: 'manager';
+}
+
+// Represents the user's role for a specific session (stored in sessionStorage)
 export interface SessionUser {
   id: string;
   name: string;
@@ -99,7 +107,7 @@ export interface SessionUser {
 }
 
 export interface AppContextType {
-  user: SessionUser | null;
+  user: ManagerUser | null; // Only managers can be logged-in users now
   workshops: Workshop[];
   employees: Employee[];
   isLoading: boolean;
@@ -121,8 +129,8 @@ export type Database = {
     Tables: {
       employees: {
         Row: Employee;
-        Insert: { name: string; email: string; };
-        Update: { name?: string; email?: string; };
+        Insert: { id: string; name: string; email: string; };
+        Update: { id?: string; name?: string; email?: string; };
       };
       chat_messages: {
         Row: ChatMessage;
@@ -130,19 +138,9 @@ export type Database = {
         Update: { session_id?: string; sender_id?: string; sender_name?: string; message?: string; };
       };
       hosts: {
-        Row: {
-          id: string;
-          workshop_id: string;
-          user_id: string; // Correct schema
-        };
-        Insert: {
-          workshop_id: string;
-          user_id: string; // Correct schema
-        };
-        Update: {
-          workshop_id?: string;
-          user_id?: string; // Correct schema
-        };
+        Row: Host;
+        Insert: { workshop_id: string; name: string; email: string; };
+        Update: { workshop_id?: string; name?: string; email?: string; };
       };
       participants: {
         Row: Participant;
@@ -152,12 +150,12 @@ export type Database = {
       session_participant_records: {
         Row: SessionParticipantRecord;
         Insert: { session_id: string; participant_id: string; attendance: 'pending' | 'present'; };
-        Update: { session_id?: string; participant_id?: string; attendance?: 'pending' | 'present'; feedback?: Feedback | null; };
+        Update: { session_id?: string; participant_id?: string; attendance?: 'pending' | 'present'; feedback?: any | null; };
       };
       sessions: {
         Row: Session;
         Insert: { workshop_id: string; session_number: number; title: string; date: string; start_time: string; end_time: string; status: "scheduled" | "live" | "ended"; };
-        Update: { workshop_id?: string; session_number?: number; title?: string; date?: string; start_time?: string; end_time?: string; status?: "scheduled" | "live" | "ended"; host_reflection?: HostReflection | null; };
+        Update: { workshop_id?: string; session_number?: number; title?: string; date?: string; start_time?: string; end_time?: string; status?: "scheduled" | "live" | "ended"; host_reflection?: any | null; };
       };
       workshops: {
         Row: RawWorkshop;
@@ -169,7 +167,10 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      is_manager: {
+        Args: Record<PropertyKey, never>;
+        Returns: boolean;
+      };
     };
     Enums: {
       [_ in never]: never;
