@@ -54,16 +54,31 @@ const JoinSessionPage: React.FC = () => {
                 filter: `id=eq.${session.id}`
             }, (payload) => {
                 if ((payload.new as Session).status === 'live') {
-                    // Host has started the session, redirect participant
-                    if(identifiedParticipant) {
-                         sessionStorage.setItem('workshop_session_user', JSON.stringify({
+                    // Host has started the session, update attendance and redirect participant
+                    const updateAttendanceAndNavigate = async () => {
+                        if (!identifiedParticipant) return;
+
+                        // CRITICAL FIX: Update attendance in the database first
+                        const { error } = await supabase
+                            .from('session_participant_records')
+                            .update({ attendance: 'present' })
+                            .eq('id', identifiedParticipant.record.id);
+                        
+                        if (error) {
+                            console.error("Failed to update attendance on real-time join:", error);
+                            // Proceed to join even if DB update fails, to not block the user
+                        }
+
+                        // Now set storage and navigate
+                        sessionStorage.setItem('workshop_session_user', JSON.stringify({
                             id: identifiedParticipant.participant.id,
                             name: identifiedParticipant.participant.name,
                             email: identifiedParticipant.participant.email,
                             role: 'participant',
                         }));
                         navigate(`/session/${sessionId}/live`);
-                    }
+                    };
+                    updateAttendanceAndNavigate();
                 }
             })
             .subscribe();
@@ -182,7 +197,7 @@ const JoinSessionPage: React.FC = () => {
                      <h2 className="mt-6 text-3xl font-extrabold text-gray-900">{workshop.title}</h2>
                      <p className="mt-2 text-xl text-gray-800">{session.title}</p>
                      <p className="mt-8 text-2xl text-gray-600 animate-pulse">The host has not started the session yet.</p>
-                     <p className="mt-2 text-gray-500">This page will automatically refresh when the session begins.</p>
+                     <p className="mt-2 text-gray-500">This page will automatically update when the session begins.</p>
                  </div>
             );
         }
