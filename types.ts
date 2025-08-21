@@ -237,7 +237,7 @@ export type Database = {
         };
         Update: {
           attendance?: 'pending' | 'present';
-          feedback?: any;
+          feedback?: Feedback | null;
         };
         Relationships: [
           {
@@ -286,7 +286,7 @@ export type Database = {
           start_time?: string;
           end_time?: string;
           status?: 'scheduled' | 'live' | 'ended';
-          host_reflection?: any;
+          host_reflection?: HostReflection | null;
         };
         Relationships: [
           {
