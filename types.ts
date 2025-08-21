@@ -1,394 +1,220 @@
-import React, { useState, useContext, useEffect, useRef, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { AppContext } from '../App';
-import { supabase } from '../services/supabase';
-import type { AppContextType, Workshop, ChatMessage, Participant, Feedback, SessionUser, Evaluation, Host, SessionWithRecords, Json } from '../types';
-import { UsersIcon, SendIcon, CheckCircleIcon } from '../components/Icons';
+// Types for the application, designed to work with Supabase
 
-// --- Helper Components ---
+// --- Generic JSON type for Supabase ---
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
 
-const ChatPanel: React.FC<{ chat: ChatMessage[], currentUser: SessionUser, onSend: (message: string) => void, isReadOnly?: boolean }> = ({ chat, currentUser, onSend, isReadOnly = false }) => {
-    const [message, setMessage] = useState('');
-    const chatEndRef = useRef<HTMLDivElement>(null);
+// --- Database table shapes (based on your Supabase schema) ---
 
-    useEffect(() => {
-        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [chat]);
-
-    const handleSend = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (message.trim()) {
-            onSend(message.trim());
-            setMessage('');
-        }
-    };
-
-    return (
-        <div className="flex flex-col h-full bg-white rounded-lg shadow-md">
-            <h3 className="text-lg font-bold p-4 border-b">{isReadOnly ? 'Chat History' : 'Live Chat'}</h3>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {chat.map((msg) => (
-                    <div key={msg.id} className={`flex ${msg.sender_id === currentUser.id ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`p-3 rounded-lg max-w-xs lg:max-w-md ${msg.sender_id === currentUser.id ? 'bg-primary text-white' : 'bg-gray-200 text-gray-800'}`}>
-                            <p className="font-bold text-sm">{msg.sender_name}</p>
-                            <p className="text-sm">{msg.message}</p>
-                            <p className="text-xs opacity-70 mt-1 text-right">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                        </div>
-                    </div>
-                ))}
-                <div ref={chatEndRef} />
-            </div>
-            {!isReadOnly && (
-                <form onSubmit={handleSend} className="p-4 border-t flex items-center space-x-2">
-                    <input
-                        type="text"
-                        value={message}
-                        onChange={(e) => setMessage(e.target.value)}
-                        placeholder="Type a message..."
-                        className="flex-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
-                        aria-label="Chat message input"
-                    />
-                    <button type="submit" className="p-2 text-white bg-primary rounded-full hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500" aria-label="Send message">
-                        <SendIcon className="h-5 w-5" />
-                    </button>
-                </form>
-            )}
-        </div>
-    );
+export type Host = {
+  id: string;
+  workshop_id: string;
+  name: string;
+  email: string;
 };
 
-const ParticipantsPanel: React.FC<{ hosts: Host[], participants: Participant[], session: SessionWithRecords }> = ({ hosts, participants, session }) => {
-    const presentCount = session.session_participant_records.filter(r => r.attendance === 'present').length;
-    
-    return (
-        <div className="bg-white rounded-lg shadow-md">
-            <h3 className="text-lg font-bold p-4 border-b flex items-center">
-                <UsersIcon className="h-6 w-6 mr-2" /> Participants ({presentCount}/{participants.length})
-            </h3>
-            <ul className="divide-y max-h-96 overflow-y-auto">
-                {hosts.map(host => (
-                    <li key={host.id} className="p-3 flex items-center justify-between">
-                        <span className="font-semibold text-gray-800">{host.name}</span>
-                        <span className="px-2 py-0.5 text-xs font-medium text-primary-800 bg-primary-100 rounded-full">Host</span>
-                    </li>
-                ))}
-                {participants.map(p => {
-                    const record = session.session_participant_records.find(r => r.participant_id === p.id);
-                    const isPresent = record?.attendance === 'present';
-                    return (
-                        <li key={p.id} className="p-3 flex items-center justify-between">
-                            <span className="text-gray-700">{p.name}</span>
-                            {isPresent ? (
-                                <span className="px-2 py-0.5 text-xs font-medium text-green-800 bg-green-100 rounded-full">Present</span>
-                            ) : (
-                                <span className="px-2 py-0.5 text-xs font-medium text-gray-800 bg-gray-100 rounded-full">Pending</span>
-                            )}
-                        </li>
-                    );
-                })}
-            </ul>
-        </div>
-    );
+export type Participant = {
+  id: string;
+  workshop_id: string;
+  name: string;
+  email: string;
+};
+
+export type Feedback = {
+  interactive: number;
+  helpful: number;
+  overall: number;
+};
+
+export type Evaluation = {
+  active: number;
+  valueAdded: number;
+  overall: number;
+};
+
+export type SessionParticipantRecord = {
+  id: string;
+  session_id: string;
+  participant_id: string;
+  attendance: 'pending' | 'present';
+  feedback?: Json | null;      // Stored as JSONB in Supabase
+  evaluation?: Json | null;    // Stored as JSONB in Supabase
+};
+
+export type Session = {
+  id: string;
+  workshop_id: string;
+  session_number: number;
+  title: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  status: 'scheduled' | 'live' | 'ended';
+};
+
+export type RawWorkshop = {
+  id: string;
+  title: string;
+  manager_id: string;
+  created_at: string;
+};
+
+export type ChatMessage = {
+  id: number;
+  session_id: string;
+  sender_id: string;
+  sender_name: string;
+  message: string;
+  created_at: string;
 };
 
 
-const FeedbackForm: React.FC<{ workshopTitle: string, sessionTitle: string, onSubmit: (feedback: Feedback) => void }> = ({ workshopTitle, sessionTitle, onSubmit }) => {
-    const [interactive, setInteractive] = useState(3);
-    const [helpful, setHelpful] = useState(3);
-    const [overall, setOverall] = useState(3);
+// --- Composite types for client-side state (combining table data) ---
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSubmit({ interactive, helpful, overall });
-    };
-
-    return (
-        <div className="w-full max-w-2xl mx-auto p-8 bg-white rounded-lg shadow-xl mt-10">
-            <h2 className="text-2xl font-bold text-center">Session Feedback</h2>
-            <p className="text-center text-gray-600 mt-1 mb-6">For "{workshopTitle} - {sessionTitle}"</p>
-            <form onSubmit={handleSubmit} className="space-y-6">
-                {[
-                    { label: 'Was the session interactive?', value: interactive, setter: setInteractive },
-                    { label: 'Was the session helpful?', value: helpful, setter: setHelpful },
-                    { label: 'How would you rate the session overall?', value: overall, setter: setOverall },
-                ].map(({ label, value, setter }) => (
-                    <div key={label}>
-                        <label className="block text-sm font-medium text-gray-700">{label}</label>
-                        <div className="flex items-center space-x-4 mt-2">
-                            <span className="text-sm text-gray-500">1</span>
-                            <input type="range" min="1" max="5" value={value} onChange={(e) => setter(parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" />
-                            <span className="text-sm text-gray-500">5</span>
-                            <span className="font-bold text-primary w-4 text-center">{value}</span>
-                        </div>
-                    </div>
-                ))}
-                <button type="submit" className="w-full mt-4 flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
-                    Submit Feedback
-                </button>
-            </form>
-        </div>
-    );
-};
-const EvaluationModal: React.FC<{ 
-    participant: Participant, 
-    evaluation: Json | null,
-    onClose: () => void, 
-    onSubmit: (participantId: string, evaluation: Evaluation) => void 
-}> = ({ participant, evaluation, onClose, onSubmit }) => {
-    const initialEvaluation = evaluation as Evaluation | null;
-    const [active, setActive] = useState(initialEvaluation?.active || 3);
-    const [valueAdded, setValueAdded] = useState(initialEvaluation?.valueAdded || 3);
-    const [overall, setOverall] = useState(initialEvaluation?.overall || 3);
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSubmit(participant.id, { active, valueAdded, overall });
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                <form onSubmit={handleSubmit}>
-                    <div className="p-6">
-                        <h3 className="text-xl font-bold text-gray-900">Evaluate: {participant.name}</h3>
-                        <p className="mt-1 text-sm text-gray-600">{participant.email}</p>
-                    </div>
-                    <div className="px-6 py-4 space-y-6 border-t border-b">
-                        {[
-                            { label: 'Was the participant active?', value: active, setter: setActive },
-                            { label: 'Did they add value to the workshop?', value: valueAdded, setter: setValueAdded },
-                            { label: 'Overall rating?', value: overall, setter: setOverall },
-                        ].map(({ label, value, setter }) => (
-                            <div key={label}>
-                                <label className="block text-sm font-medium text-gray-700">{label}</label>
-                                <div className="flex items-center space-x-4 mt-2">
-                                    <span className="text-sm text-gray-500">1</span>
-                                    <input type="range" min="1" max="5" value={value} onChange={(e) => setter(parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" />
-                                    <span className="text-sm text-gray-500">5</span>
-                                    <span className="font-bold text-primary w-4 text-center">{value}</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                    <div className="p-4 bg-gray-50 flex justify-end space-x-3">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50">Cancel</button>
-                        <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md shadow-sm hover:bg-primary-700">Save Evaluation</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
+export type SessionWithRecords = Session & {
+  session_participant_records: SessionParticipantRecord[];
 };
 
-const EvaluationPanel: React.FC<{ workshop: Workshop, session: SessionWithRecords, onSaveEvaluation: (participantId: string, evaluation: Evaluation) => void }> = ({ workshop, session, onSaveEvaluation }) => {
-    const [selectedParticipant, setSelectedParticipant] = useState<Participant | null>(null);
+export type Workshop = RawWorkshop & {
+  hosts: Host[];
+  participants: Participant[];
+  sessions: SessionWithRecords[];
+};
 
-    const handleSave = (participantId: string, evaluation: Evaluation) => {
-        onSaveEvaluation(participantId, evaluation);
-        setSelectedParticipant(null);
-    };
-    
-    return (
-        <div className="w-full max-w-4xl mx-auto p-8 bg-white rounded-lg shadow-xl mt-10">
-            <h2 className="text-2xl font-bold">Participant Evaluation</h2>
-            <p className="mt-1 text-gray-600">Click on a participant to submit their evaluation. Evaluated participants will have a green checkmark.</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-6">
-                {workshop.participants.map(p => {
-                    const record = session.session_participant_records.find(r => r.participant_id === p.id);
-                    const evaluation = record?.evaluation;
-                    return (
-                        <button key={p.id} onClick={() => setSelectedParticipant(p)} className={`p-4 text-left border rounded-lg flex items-center justify-between transition-all ${evaluation ? 'border-green-300 bg-green-50 hover:bg-green-100' : 'border-gray-300 bg-white hover:bg-gray-50'}`} aria-label={`Evaluate ${p.name}`}>
-                            <div>
-                                <p className="font-semibold text-gray-800">{p.name}</p>
-                                <p className="text-sm text-gray-500">{p.email}</p>
-                            </div>
-                            {evaluation && <CheckCircleIcon className="h-6 w-6 text-green-500 flex-shrink-0" aria-hidden="true" />}
-                        </button>
-                    );
-                })}
-            </div>
-            {selectedParticipant && <EvaluationModal 
-                participant={selectedParticipant} 
-                evaluation={session.session_participant_records.find(r => r.participant_id === selectedParticipant.id)?.evaluation ?? null}
-                onClose={() => setSelectedParticipant(null)} 
-                onSubmit={handleSave} 
-            />}
-        </div>
-    );
+
+// --- User and Context types ---
+
+export interface SessionUser {
+  id: string;
+  name: string;
+  email: string;
+  role: 'manager' | 'host' | 'participant';
 }
 
-// --- Main Component ---
+export interface AppContextType {
+  user: SessionUser | null;
+  workshops: Workshop[];
+  isLoading: boolean;
+  logout: () => Promise<void>;
+  addWorkshop: (
+    workshopData: { title: string; total_sessions: number; weekday: string; time: string },
+    hosts: Omit<Host, 'id' | 'workshop_id'>[], 
+    participants: Omit<Participant, 'id' | 'workshop_id'>[]
+  ) => Promise<void>;
+  updateSession: (session: SessionWithRecords) => Promise<void>;
+}
 
-const LiveSessionPage: React.FC = () => {
-    const { sessionId } = useParams<{ sessionId: string }>();
-    const { workshops, updateSession } = useContext(AppContext) as AppContextType;
-    const navigate = useNavigate();
-
-    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-    const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
-    const [isHost, setIsHost] = useState(false);
-    const [pageState, setPageState] = useState<'loading' | 'live' | 'feedback' | 'ended' | 'error'>('loading');
-
-    const { workshop, session } = useMemo(() => {
-        if (!sessionId || workshops.length === 0) return { workshop: null, session: null };
-        for (const ws of workshops) {
-            const s = ws.sessions.find(s => s.id === sessionId);
-            if (s) return { workshop: ws, session: s };
-        }
-        return { workshop: null, session: null };
-    }, [sessionId, workshops]);
-
-    useEffect(() => {
-        let sessionUser: SessionUser | null = null;
-        try {
-            const stored = sessionStorage.getItem('workshop_session_user');
-            if (stored) sessionUser = JSON.parse(stored);
-        } catch(e) { /* ignore */ }
-        
-        if (!sessionUser || !sessionId) {
-            navigate(`/session/${sessionId}/join`);
-            return;
-        }
-        setCurrentUser(sessionUser);
-
-        if (workshops.length > 0 && !session) {
-             setPageState('error');
-             return;
-        }
-
-        if (workshop && session) {
-            const hostCheck = workshop.hosts.some(h => h.email === sessionUser!.email) || sessionUser!.role === 'manager';
-            setIsHost(hostCheck);
-
-            if (session.status === 'ended') {
-                if (!hostCheck) { // I'm a participant
-                    const myRecord = session.session_participant_records.find(r => r.participant_id === sessionUser!.id);
-                    if (myRecord && !myRecord.feedback) setPageState('feedback');
-                    else setPageState('ended');
-                } else { // I'm a host/manager
-                    setPageState('ended');
-                }
-            } else if (session.status === 'live' || session.status === 'scheduled') {
-                setPageState('live');
-            }
-        }
-    }, [sessionId, workshops, workshop, session, navigate]);
-    
-    // Realtime chat subscription
-    useEffect(() => {
-        if (!session) return;
-        
-        const fetchChat = async () => {
-            const { data, error } = await supabase.from('chat_messages').select('*').eq('session_id', session.id).order('created_at');
-            if (error) console.error("Error fetching chat:", error);
-            else setChatMessages(data as ChatMessage[]);
+// --- Supabase generated types replacement ---
+export type Database = {
+  public: {
+    Tables: {
+      chat_messages: {
+        Row: ChatMessage;
+        Insert: {
+          session_id: string;
+          sender_id: string;
+          sender_name: string;
+          message: string;
         };
-        fetchChat();
-
-        const channel = supabase.channel(`chat_${session.id}`)
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `session_id=eq.${session.id}` },
-                (payload) => {
-                    setChatMessages(currentMessages => [...currentMessages, payload.new as ChatMessage]);
-                }
-            )
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
+        Update: {
+          session_id?: string;
+          sender_id?: string;
+          sender_name?: string;
+          message?: string;
         };
-    }, [session]);
-
-
-    const handleEndSession = async () => {
-        if (!session) return;
-        await updateSession({ ...session, status: 'ended' });
-    };
-
-    const handleSendMessage = async (message: string) => {
-        if (!currentUser || !session) return;
-        const newMessage = {
-            session_id: session.id,
-            sender_id: currentUser.id,
-            sender_name: currentUser.name,
-            message: message,
+      };
+      hosts: {
+        Row: Host;
+        Insert: {
+          workshop_id: string;
+          name: string;
+          email: string;
         };
-        const { error } = await supabase.from('chat_messages').insert(newMessage);
-        if (error) console.error("Error sending message:", error);
+        Update: {
+          workshop_id?: string;
+          name?: string;
+          email?: string;
+        };
+      };
+      participants: {
+        Row: Participant;
+        Insert: {
+          workshop_id: string;
+          name: string;
+          email: string;
+        };
+        Update: {
+          workshop_id?: string;
+          name?: string;
+          email?: string;
+        };
+      };
+      session_participant_records: {
+        Row: SessionParticipantRecord;
+        Insert: {
+          session_id: string;
+          participant_id: string;
+          attendance: 'pending' | 'present';
+          feedback?: Json | null;
+          evaluation?: Json | null;
+        };
+        Update: {
+          session_id?: string;
+          participant_id?: string;
+          attendance?: 'pending' | 'present';
+          feedback?: Json | null;
+          evaluation?: Json | null;
+        };
+      };
+      sessions: {
+        Row: Session;
+        Insert: {
+          workshop_id: string;
+          session_number: number;
+          title: string;
+          date: string;
+          start_time: string;
+          end_time: string;
+          status: 'scheduled' | 'live' | 'ended';
+        };
+        Update: {
+          workshop_id?: string;
+          session_number?: number;
+          title?: string;
+          date?: string;
+          start_time?: string;
+          end_time?: string;
+          status?: 'scheduled' | 'live' | 'ended';
+        };
+      };
+      workshops: {
+        Row: RawWorkshop;
+        Insert: {
+          title: string;
+          manager_id: string;
+        };
+        Update: {
+          title?: string;
+          manager_id?: string;
+        };
+      };
     };
-
-    const handleSubmitFeedback = async (feedback: Feedback) => {
-        if (!session || !currentUser) return;
-        const myRecord = session.session_participant_records.find(p => p.participant_id === currentUser.id);
-        if (myRecord) {
-            myRecord.feedback = feedback;
-            await updateSession(session);
-            setPageState('ended');
-        }
+    Views: {
+      [_ in never]: never;
     };
-
-    const handleSaveEvaluation = async (participantId: string, evaluation: Evaluation) => {
-        if (!session) return;
-        const record = session.session_participant_records.find(r => r.participant_id === participantId);
-        if(record) {
-            record.evaluation = evaluation;
-            await updateSession(session);
-        }
+    Functions: {
+      [_ in never]: never;
     };
-
-    if (!workshop || !session) {
-       return <div className="p-10 text-center">{pageState === 'error' ? 'Error: Session not found' : 'Loading session...'}</div>;
-    }
-
-    if (pageState === 'feedback') return <FeedbackForm workshopTitle={workshop.title} sessionTitle={session.title} onSubmit={handleSubmitFeedback} />;
-
-    if (pageState === 'ended') {
-        if (isHost) {
-            return (
-                <div className="container mx-auto px-4 py-8">
-                    <div className="text-center mb-8">
-                        <h1 className="text-3xl font-bold text-gray-900">{workshop.title}</h1>
-                        <p className="text-xl text-gray-800">{session.title} - Session Ended</p>
-                    </div>
-                    <EvaluationPanel workshop={workshop} session={session} onSaveEvaluation={handleSaveEvaluation} />
-                     <div className="max-w-4xl mx-auto mt-12 h-[70vh]">
-                        {currentUser && <ChatPanel chat={chatMessages} currentUser={currentUser} onSend={() => {}} isReadOnly={true} />}
-                    </div>
-                </div>
-            );
-        }
-        return (
-            <div className="container mx-auto px-4 py-8">
-                <div className="text-center my-20">
-                    <h1 className="text-3xl font-bold text-gray-900">{workshop.title} - {session.title}</h1>
-                    <p className="mt-4 text-lg text-gray-600">This session has ended. Thank you for your participation.</p>
-                </div>
-            </div>
-        );
-    }
-
-    return ( // Live state
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div className="flex justify-between items-center mb-6">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900">{workshop.title}</h1>
-                    <p className="text-lg text-gray-600">{session.title} - Session is live</p>
-                </div>
-                {isHost && (
-                    <button onClick={handleEndSession} className="px-5 py-3 font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
-                        End Session for All
-                    </button>
-                )}
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-220px)]">
-                <div className="lg:col-span-2 h-full">
-                    {currentUser && <ChatPanel chat={chatMessages} currentUser={currentUser} onSend={handleSendMessage} />}
-                </div>
-                <div className="h-full">
-                    <ParticipantsPanel hosts={workshop.hosts} participants={workshop.participants} session={session} />
-                </div>
-            </div>
-        </div>
-    );
+    Enums: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
+  };
 };
-
-export default LiveSessionPage;
