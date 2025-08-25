@@ -139,15 +139,15 @@ const App: React.FC = () => {
         } else if (data) {
              const enrichedWorkshops = data.map(ws => ({
                 ...ws,
-                hosts: (ws.hosts as any[]).map(host => {
+                hosts: Array.isArray(ws.hosts) ? (ws.hosts as any[]).map(host => {
                     const employee = allEmployees.find(emp => emp.id === host.user_id);
                     return {
                         user_id: host.user_id,
                         name: employee?.name || 'Unknown Host',
                         email: employee?.email || 'No email'
                     };
-                }),
-                participants: (ws.participants as any[]).map(p => {
+                }) : [],
+                participants: Array.isArray(ws.participants) ? (ws.participants as any[]).map(p => {
                     if (!p.employees) {
                         return {
                             id: p.id,
@@ -164,7 +164,7 @@ const App: React.FC = () => {
                         name: p.employees.name,
                         email: p.employees.email,
                     }
-                }),
+                }) : [],
             }));
             setWorkshops(enrichedWorkshops as unknown as Workshop[]);
         } else {
