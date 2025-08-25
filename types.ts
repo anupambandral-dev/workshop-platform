@@ -112,8 +112,6 @@ export interface AppContextType {
     participants: Employee[]
   ) => Promise<void>;
   addEmployees: (newEmployees: { name: string; email: string }[]) => Promise<{
-    newCount: number;
-    duplicateCount: number;
     error: string | null;
   }>;
   updateSession: (session: SessionWithRecords) => Promise<void>;
