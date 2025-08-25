@@ -111,6 +111,11 @@ export interface AppContextType {
     hosts: Employee[], 
     participants: Employee[]
   ) => Promise<void>;
+  addEmployees: (newEmployees: { name: string; email: string }[]) => Promise<{
+    newCount: number;
+    duplicateCount: number;
+    error: string | null;
+  }>;
   updateSession: (session: SessionWithRecords) => Promise<void>;
   deleteWorkshop: (workshopId: string) => Promise<void>;
   updateSessionInState: (updatedSession: SessionWithRecords) => void;
@@ -123,7 +128,7 @@ export type Database = {
     Tables: {
       employees: {
         Row: Employee;
-        Insert: { id: string; name: string; email: string; };
+        Insert: { id?: string; name: string; email: string; };
         Update: Partial<Employee>;
         Relationships: [];
       };
