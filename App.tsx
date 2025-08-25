@@ -304,7 +304,6 @@ const App: React.FC = () => {
     const addEmployees = useCallback(async (newEmployees: { name: string; email: string }[]) => {
         setIsLoading(true);
         try {
-            // Step 1: Get the most up-to-date list of emails to prevent race conditions.
             const { data: currentEmployees, error: fetchError } = await supabase
                 .from('employees')
                 .select('email');
@@ -322,7 +321,6 @@ const App: React.FC = () => {
             for (const emp of newEmployees) {
                 if (!existingEmails.has(emp.email.toLowerCase())) {
                     employeesToInsert.push(emp);
-                    // Add to the set locally to handle duplicates within the same import file
                     existingEmails.add(emp.email.toLowerCase());
                 } else {
                     duplicateCount++;
@@ -333,16 +331,19 @@ const App: React.FC = () => {
                 return { newCount: 0, duplicateCount, error: null };
             }
 
-            // Step 2: Insert only the new employees.
-            const { error: insertError } = await supabase
+            const { data: insertedData, error: insertError } = await supabase
                 .from('employees')
-                .insert(employeesToInsert);
+                .insert(employeesToInsert)
+                .select();
 
             if (insertError) {
                 throw insertError;
             }
 
-            // Step 3: Re-fetch the entire list from the database to ensure UI is in sync.
+            if (!insertedData || insertedData.length === 0) {
+                throw new Error("The database did not confirm the insertion. This might be due to a permissions issue (e.g., Row Level Security).");
+            }
+
             await fetchEmployees();
 
             return { newCount: employeesToInsert.length, duplicateCount, error: null };
