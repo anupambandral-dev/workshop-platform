@@ -306,26 +306,27 @@ const App: React.FC = () => {
                 return { error: null };
             }
 
-            // Use Supabase's 'upsert' which is designed to handle conflicts.
-            // This is the correct, robust method for this operation.
-            const { error: upsertError } = await supabase
-                .from('employees')
-                .upsert(newEmployees, { onConflict: 'email', ignoreDuplicates: true });
+            // NEW MECHANISM: Invoke a Supabase Edge Function to handle the import.
+            // This is more robust and bypasses RLS issues for the client.
+            const { error: functionError } = await supabase.functions.invoke('import-employees', {
+                body: { users: newEmployees },
+            });
 
-            if (upsertError) {
-                // This will now only catch fundamental errors like RLS violations.
-                throw upsertError;
+            if (functionError) {
+                // This error could be from the function invocation itself (e.g., network, 404)
+                // or a custom error returned from the function's logic.
+                throw functionError;
             }
 
-            // ALWAYS refresh the employee list from the database to ensure UI consistency.
+            // If the function call succeeds, the data is in the DB. Refresh the client state.
             await fetchEmployees();
 
             return { error: null }; // Return success
 
         } catch (err: any) {
-            console.error("Error adding employees:", err);
-            // Provide a clearer, more actionable error message for the most likely cause (RLS).
-            const errorMessage = "Failed to save employees. This is likely due to a database permissions issue. Please check your Row Level Security (RLS) policy for the 'employees' table and ensure authenticated users are allowed to insert records.";
+            console.error("Error invoking import-employees function:", err);
+            // Provide a clearer, more actionable error message.
+            const errorMessage = `Import failed: ${err.message || 'An unknown error occurred.'} This may be due to a database permissions issue or the Edge Function not being deployed correctly.`;
             return { error: errorMessage };
         } finally {
             setIsLoading(false);

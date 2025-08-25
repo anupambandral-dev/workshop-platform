@@ -53,7 +53,7 @@ const EmployeesPage: React.FC = () => {
             {importResult && !importResult.error && (
                 <div className="mb-6 p-4 rounded-md bg-green-100 text-green-800">
                     <p>
-                        <strong>Import Successful:</strong> The employee list has been updated. Any duplicates in the file were ignored.
+                        <strong>Import Successful:</strong> The employee list has been updated.
                     </p>
                 </div>
             )}
