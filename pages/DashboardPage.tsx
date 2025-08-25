@@ -4,7 +4,6 @@ import type { AppContextType, Workshop, Employee } from '../types';
 import { PlusIcon, UsersIcon, CalendarIcon, ClockIcon, XMarkIcon, TrashIcon, ExclamationTriangleIcon } from '../components/Icons';
 import { useNavigate } from 'react-router-dom';
 import UserSearchModal from '../components/UserSearchModal';
-import CSVImportModal from '../components/CSVImportModal';
 
 const WorkshopCard: React.FC<{ workshop: Workshop, onDelete: () => void, canDelete: boolean }> = ({ workshop, onDelete, canDelete }) => {
     const navigate = useNavigate();
@@ -303,22 +302,28 @@ const DashboardPage: React.FC = () => {
             await deleteWorkshop(workshopToDelete.id);
             setWorkshopToDelete(null);
         } catch (error) {
-            console.error("Failed to delete workshop on page:", error);
+            console.error('Failed to delete workshop:', error);
+            alert('Failed to delete workshop. Please try again.');
         } finally {
             setIsDeleting(false);
         }
     };
 
-    if (isLoading) {
-        return <div className="text-center p-10">Loading workshops...</div>;
-    }
-
     return (
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            {isModalOpen && <CreateWorkshopModal onClose={() => setIsModalOpen(false)} />}
+            {workshopToDelete && (
+                <DeleteWorkshopModal
+                    workshop={workshopToDelete}
+                    onClose={() => setWorkshopToDelete(null)}
+                    onConfirm={handleConfirmDelete}
+                    isDeleting={isDeleting}
+                />
+            )}
             <div className="flex justify-between items-center mb-8">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900">{isManager ? 'Manager Dashboard' : 'My Assigned Workshops'}</h1>
-                    <p className="mt-1 text-lg text-gray-600">Welcome back, {user?.name}!</p>
+                    <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+                    <p className="mt-1 text-lg text-gray-600">Welcome back, {user?.name || 'User'}.</p>
                 </div>
                 {isManager && (
                     <button
@@ -331,45 +336,67 @@ const DashboardPage: React.FC = () => {
                 )}
             </div>
 
-            {isModalOpen && <CreateWorkshopModal onClose={() => setIsModalOpen(false)} />}
-            
-            {workshopToDelete && (
-                <DeleteWorkshopModal 
-                    workshop={workshopToDelete}
-                    onClose={() => setWorkshopToDelete(null)}
-                    onConfirm={handleConfirmDelete}
-                    isDeleting={isDeleting}
-                />
+            {isLoading ? (
+                <div className="text-center p-10">Loading workshops...</div>
+            ) : (
+                <>
+                    {workshops.length === 0 ? (
+                        <div className="text-center bg-white p-12 rounded-lg shadow-md border">
+                             <h3 className="text-xl font-medium text-gray-900">No workshops yet</h3>
+                            <p className="mt-1 text-sm text-gray-500">Get started by creating a new workshop.</p>
+                             {isManager && (
+                                <div className="mt-6">
+                                    <button
+                                         onClick={() => setIsModalOpen(true)}
+                                         type="button"
+                                         className="inline-flex items-center rounded-md bg-primary px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600"
+                                     >
+                                         <PlusIcon className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />
+                                         New Workshop
+                                     </button>
+                                 </div>
+                             )}
+                        </div>
+                    ) : (
+                         <div className="space-y-8">
+                            <div>
+                                <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2 mb-6">Current & Upcoming</h2>
+                                {currentAndUpcoming.length > 0 ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        {currentAndUpcoming.map(ws => (
+                                            <WorkshopCard 
+                                                key={ws.id} 
+                                                workshop={ws} 
+                                                onDelete={() => setWorkshopToDelete(ws)} 
+                                                canDelete={isManager}
+                                            />
+                                        ))}
+                                    </div>
+                                ) : (
+                                     <p className="text-gray-500">No active workshops.</p>
+                                )}
+                            </div>
+                            <div>
+                                <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2 mb-6">Previous</h2>
+                                 {previous.length > 0 ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        {previous.map(ws => (
+                                             <WorkshopCard 
+                                                key={ws.id} 
+                                                workshop={ws} 
+                                                onDelete={() => setWorkshopToDelete(ws)}
+                                                canDelete={isManager}
+                                             />
+                                        ))}
+                                    </div>
+                                ) : (
+                                     <p className="text-gray-500">No previously completed workshops.</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </>
             )}
-            
-            <div className="space-y-12">
-                <div>
-                    <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2 mb-6">Current & Upcoming</h2>
-                    {currentAndUpcoming.length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {currentAndUpcoming.map(ws => <WorkshopCard key={ws.id} workshop={ws} onDelete={() => setWorkshopToDelete(ws)} canDelete={isManager} />)}
-                        </div>
-                    ) : (
-                        <div className="text-center py-10 bg-white rounded-lg shadow-md border">
-                            <p className="text-gray-500">No current or upcoming workshops.</p>
-                             {isManager && <button onClick={() => setIsModalOpen(true)} className="mt-4 text-sm font-medium text-primary hover:text-primary-700">Create your first workshop</button>}
-                        </div>
-                    )}
-                </div>
-
-                <div>
-                    <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2 mb-6">Previous Workshops</h2>
-                    {previous.length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {previous.map(ws => <WorkshopCard key={ws.id} workshop={ws} onDelete={() => setWorkshopToDelete(ws)} canDelete={isManager} />)}
-                        </div>
-                    ) : (
-                        <div className="text-center py-10 bg-white rounded-lg shadow-md border">
-                            <p className="text-gray-500">No previously completed workshops.</p>
-                        </div>
-                    )}
-                </div>
-            </div>
         </div>
     );
 };

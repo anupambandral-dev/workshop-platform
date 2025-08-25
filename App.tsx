@@ -326,7 +326,14 @@ const App: React.FC = () => {
         } catch (err: any) {
             console.error("Error invoking import-employees function:", err);
             // Provide a clearer, more actionable error message.
-            const errorMessage = `Import failed: ${err.message || 'An unknown error occurred.'} This may be due to a database permissions issue or the Edge Function not being deployed correctly.`;
+            let errorMessage = `Import failed: ${err.message || 'An unknown error occurred.'}`;
+            if (err.message.includes('Function not found')) {
+                errorMessage += ' Please ensure the "import-employees" Edge Function is deployed correctly in your Supabase project.';
+            } else if (err.message.includes('environment variables') || err.message.includes('Missing')) {
+                errorMessage += ' The Edge Function may be missing required environment variables (like SUPABASE_SERVICE_ROLE_KEY). Please check your function configuration in the Supabase dashboard.';
+            } else {
+                 errorMessage += ' This may be due to a database permissions issue or the Edge Function not being deployed correctly.';
+            }
             return { error: errorMessage };
         } finally {
             setIsLoading(false);
