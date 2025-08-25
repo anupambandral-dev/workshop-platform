@@ -350,9 +350,12 @@ const App: React.FC = () => {
 
         } catch (err: any) {
             console.error("Error adding employees:", err);
-            const errorMessage = err.message.includes("employees_email_key") 
-                ? "One or more emails in the import file already exist in the system." 
-                : err.message;
+            let errorMessage = err.message;
+            if (err.message.includes("employees_email_key")) {
+                errorMessage = "One or more emails in the import file already exist in the system.";
+            } else if (err.message.includes("The database did not confirm the insertion")) {
+                errorMessage = "Permission Denied: The database did not save the new employees. This is likely due to a missing Row Level Security (RLS) policy on the 'employees' table. Please ensure an RLS policy exists that allows authenticated users to insert new rows.";
+            }
             return { newCount: 0, duplicateCount: newEmployees.length, error: errorMessage };
         } finally {
             setIsLoading(false);
