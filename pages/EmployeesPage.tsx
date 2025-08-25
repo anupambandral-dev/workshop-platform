@@ -7,7 +7,7 @@ import CSVImportModal from '../components/CSVImportModal';
 const EmployeesPage: React.FC = () => {
     const { employees, addEmployees, isLoading } = useContext(AppContext) as AppContextType;
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-    const [importResult, setImportResult] = useState<{ newCount: number; duplicateCount: number; error: string | null } | null>(null);
+    const [importResult, setImportResult] = useState<{ error: string | null } | null>(null);
 
     const handleImport = async (newUsers: { name: string; email: string }[]) => {
         const result = await addEmployees(newUsers);
@@ -53,7 +53,7 @@ const EmployeesPage: React.FC = () => {
             {importResult && !importResult.error && (
                 <div className="mb-6 p-4 rounded-md bg-green-100 text-green-800">
                     <p>
-                        <strong>Import Complete:</strong> {importResult.newCount} new employees added. {importResult.duplicateCount} duplicates were skipped.
+                        <strong>Import Successful:</strong> The employee list has been updated. Any duplicates in the file were ignored.
                     </p>
                 </div>
             )}
