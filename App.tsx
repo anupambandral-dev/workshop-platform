@@ -188,8 +188,6 @@ const App: React.FC = () => {
     
     const setupUserSession = useCallback(async (session: any | null) => {
         if (session?.user) {
-            // FIX: The previous role check was too strict, preventing login if user metadata for 'role' was not set.
-            // This logic now defaults to 'manager' if a valid role is not found, ensuring the primary user can always access the system.
             const roleFromMetadata = session.user.user_metadata?.role;
             const userRole = (roleFromMetadata === 'manager' || roleFromMetadata === 'host') ? roleFromMetadata : 'manager';
 
@@ -304,59 +302,31 @@ const App: React.FC = () => {
     const addEmployees = useCallback(async (newEmployees: { name: string; email: string }[]) => {
         setIsLoading(true);
         try {
-            const { data: currentEmployees, error: fetchError } = await supabase
+            if (newEmployees.length === 0) {
+                return { error: null };
+            }
+
+            // Use Supabase's 'upsert' which is designed to handle conflicts.
+            // This is the correct, robust method for this operation.
+            const { error: upsertError } = await supabase
                 .from('employees')
-                .select('email');
+                .upsert(newEmployees, { onConflict: 'email', ignoreDuplicates: true });
 
-            if (fetchError) {
-                console.error("Failed to fetch current emails for duplicate check:", fetchError);
-                throw new Error("Could not verify existing employees. Please try again.");
+            if (upsertError) {
+                // This will now only catch fundamental errors like RLS violations.
+                throw upsertError;
             }
 
-            const existingEmails = new Set((currentEmployees || []).map(e => e.email.toLowerCase()));
-            
-            const employeesToInsert: { name: string; email: string }[] = [];
-            let duplicateCount = 0;
-
-            for (const emp of newEmployees) {
-                if (!existingEmails.has(emp.email.toLowerCase())) {
-                    employeesToInsert.push(emp);
-                    existingEmails.add(emp.email.toLowerCase());
-                } else {
-                    duplicateCount++;
-                }
-            }
-
-            if (employeesToInsert.length === 0) {
-                return { newCount: 0, duplicateCount, error: null };
-            }
-
-            const { data: insertedData, error: insertError } = await supabase
-                .from('employees')
-                .insert(employeesToInsert)
-                .select();
-
-            if (insertError) {
-                throw insertError;
-            }
-
-            if (!insertedData || insertedData.length === 0) {
-                throw new Error("The database did not confirm the insertion. This might be due to a permissions issue (e.g., Row Level Security).");
-            }
-
+            // ALWAYS refresh the employee list from the database to ensure UI consistency.
             await fetchEmployees();
 
-            return { newCount: employeesToInsert.length, duplicateCount, error: null };
+            return { error: null }; // Return success
 
         } catch (err: any) {
             console.error("Error adding employees:", err);
-            let errorMessage = err.message;
-            if (err.message.includes("employees_email_key")) {
-                errorMessage = "One or more emails in the import file already exist in the system.";
-            } else if (err.message.includes("The database did not confirm the insertion")) {
-                errorMessage = "Permission Denied: The database did not save the new employees. This is likely due to a missing Row Level Security (RLS) policy on the 'employees' table. Please ensure an RLS policy exists that allows authenticated users to insert new rows.";
-            }
-            return { newCount: 0, duplicateCount: newEmployees.length, error: errorMessage };
+            // Provide a clearer, more actionable error message for the most likely cause (RLS).
+            const errorMessage = "Failed to save employees. This is likely due to a database permissions issue. Please check your Row Level Security (RLS) policy for the 'employees' table and ensure authenticated users are allowed to insert records.";
+            return { error: errorMessage };
         } finally {
             setIsLoading(false);
         }
