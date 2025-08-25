@@ -8,6 +8,7 @@ import JoinSessionPage from './pages/JoinSessionPage';
 import LiveSessionPage from './pages/LiveSessionPage';
 import WorkshopDetailPage from './pages/WorkshopDetailPage';
 import SessionDetailPage from './pages/SessionDetailPage';
+import EmployeesPage from './pages/EmployeesPage';
 import { LogoIcon } from './components/Icons';
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -20,6 +21,7 @@ const AppContent: React.FC = () => {
 
     // Hide logout on public-facing participant pages
     const isParticipantPage = location.pathname.startsWith('/session/');
+    const isManager = user?.role === 'manager';
 
     return (
         <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
@@ -31,12 +33,19 @@ const AppContent: React.FC = () => {
                             <span className="text-xl font-bold text-gray-800 hidden sm:block">Workshop Platform</span>
                         </Link>
                         {user && !isParticipantPage && (
-                            <button
-                                onClick={logout}
-                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
-                            >
-                                Logout
-                            </button>
+                             <div className="flex items-center space-x-4">
+                                {isManager && (
+                                    <Link to="/employees" className="text-sm font-medium text-gray-700 hover:text-primary">
+                                        Manage Employees
+                                    </Link>
+                                )}
+                                <button
+                                    onClick={logout}
+                                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+                                >
+                                    Logout
+                                </button>
+                            </div>
                         )}
                     </div>
                 </nav>
@@ -46,6 +55,7 @@ const AppContent: React.FC = () => {
                     <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <LoginPage />} />
                     
                     <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+                    <Route path="/employees" element={<ProtectedRoute><EmployeesPage /></ProtectedRoute>} />
                     <Route path="/workshop/:workshopId" element={<ProtectedRoute><WorkshopDetailPage /></ProtectedRoute>} />
                     <Route path="/workshop/:workshopId/session/:sessionId" element={<ProtectedRoute><SessionDetailPage /></ProtectedRoute>} />
                     
@@ -92,9 +102,9 @@ const App: React.FC = () => {
             .from('workshops')
             .select(`
                 *,
-                hosts!workshop_id(user_id),
-                participants!workshop_id(*, employees(*)),
-                sessions!workshop_id(*, session_participant_records(*))
+                hosts(user_id),
+                participants(*, employees(*)),
+                sessions(*, session_participant_records(*))
             `)
             .order('created_at', { ascending: false });
 
@@ -164,7 +174,7 @@ const App: React.FC = () => {
     }, []);
 
     const fetchEmployees = useCallback(async () => {
-        const { data, error } = await supabase.from('employees').select('*');
+        const { data, error } = await supabase.from('employees').select('*').order('created_at', { ascending: false });
         if (error) {
             console.error('Error fetching employees:', error);
             setEmployees([]);
@@ -283,8 +293,6 @@ const App: React.FC = () => {
             const { error: recordsError } = await supabase.from('session_participant_records').insert(recordsToCreate);
             if (recordsError) throw new Error(recordsError.message);
 
-            // CRITICAL FIX: Remove buggy optimistic update and perform a reliable refetch.
-            // This guarantees the UI updates correctly.
             await fetchWorkshops(user, employees);
             
         } catch (error) {
@@ -293,6 +301,46 @@ const App: React.FC = () => {
         }
     };
     
+    const addEmployees = async (newEmployees: { name: string; email: string }[]) => {
+        setIsLoading(true);
+        try {
+            const existingEmails = new Set(employees.map(e => e.email.toLowerCase()));
+
+            const employeesToInsert: { name: string; email: string }[] = [];
+            let duplicateCount = 0;
+            for (const emp of newEmployees) {
+                if (!existingEmails.has(emp.email.toLowerCase())) {
+                    employeesToInsert.push(emp);
+                    existingEmails.add(emp.email.toLowerCase());
+                } else {
+                    duplicateCount++;
+                }
+            }
+            
+            let error: string | null = null;
+
+            if (employeesToInsert.length > 0) {
+                const { error: insertError } = await supabase.from('employees').insert(employeesToInsert);
+                if (insertError) {
+                    throw insertError;
+                }
+            }
+
+            await fetchEmployees();
+
+            return { newCount: employeesToInsert.length, duplicateCount, error };
+
+        } catch (err: any) {
+            console.error("Error adding employees:", err);
+            const errorMessage = err.message.includes("employees_email_key") 
+                ? "One or more emails in the import file already exist in the system." 
+                : err.message;
+            return { newCount: 0, duplicateCount: newEmployees.length, error: errorMessage };
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const updateSession = async (session: SessionWithRecords) => {
         const { session_participant_records, ...sessionData } = session;
         const { id: sessionId, ...sessionUpdateData } = sessionData;
@@ -300,7 +348,6 @@ const App: React.FC = () => {
         const { error } = await supabase.from('sessions').update(sessionUpdateData).eq('id', sessionId);
         if (error) throw error;
 
-        // also update records
         for (const record of session_participant_records) {
              const { id: recordId, ...recordUpdateData } = record;
             const { error: recordError } = await supabase.from('session_participant_records').update(recordUpdateData).eq('id', recordId);
@@ -355,6 +402,7 @@ const App: React.FC = () => {
         isLoading,
         logout,
         addWorkshop,
+        addEmployees,
         updateSession,
         deleteWorkshop,
         updateSessionInState,
