@@ -304,37 +304,48 @@ const App: React.FC = () => {
     const addEmployees = useCallback(async (newEmployees: { name: string; email: string }[]) => {
         setIsLoading(true);
         try {
-            const existingEmails = new Set(employees.map(e => e.email.toLowerCase()));
+            // Step 1: Get the most up-to-date list of emails to prevent race conditions.
+            const { data: currentEmployees, error: fetchError } = await supabase
+                .from('employees')
+                .select('email');
 
+            if (fetchError) {
+                console.error("Failed to fetch current emails for duplicate check:", fetchError);
+                throw new Error("Could not verify existing employees. Please try again.");
+            }
+
+            const existingEmails = new Set((currentEmployees || []).map(e => e.email.toLowerCase()));
+            
             const employeesToInsert: { name: string; email: string }[] = [];
             let duplicateCount = 0;
+
             for (const emp of newEmployees) {
                 if (!existingEmails.has(emp.email.toLowerCase())) {
                     employeesToInsert.push(emp);
+                    // Add to the set locally to handle duplicates within the same import file
                     existingEmails.add(emp.email.toLowerCase());
                 } else {
                     duplicateCount++;
                 }
             }
-            
+
             if (employeesToInsert.length === 0) {
-                 return { newCount: 0, duplicateCount, error: null };
+                return { newCount: 0, duplicateCount, error: null };
             }
 
-            const { data: insertedData, error: insertError } = await supabase
+            // Step 2: Insert only the new employees.
+            const { error: insertError } = await supabase
                 .from('employees')
-                .insert(employeesToInsert)
-                .select();
+                .insert(employeesToInsert);
 
             if (insertError) {
                 throw insertError;
             }
 
-            if (insertedData) {
-                setEmployees(prevEmployees => [...insertedData, ...prevEmployees]);
-            }
+            // Step 3: Re-fetch the entire list from the database to ensure UI is in sync.
+            await fetchEmployees();
 
-            return { newCount: insertedData?.length || 0, duplicateCount, error: null };
+            return { newCount: employeesToInsert.length, duplicateCount, error: null };
 
         } catch (err: any) {
             console.error("Error adding employees:", err);
@@ -345,7 +356,7 @@ const App: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [employees]);
+    }, [fetchEmployees]);
 
     const updateSessionInState = useCallback((updatedSession: SessionWithRecords) => {
         setWorkshops(prev => prev.map(ws => {
