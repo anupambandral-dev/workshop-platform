@@ -43,7 +43,18 @@ const CSVImportModal: React.FC<CSVImportModalProps> = ({ onClose, onImport }) =>
         setIsProcessing(true);
         const reader = new FileReader();
         reader.onload = (event) => {
-            const text = event.target?.result as string;
+            let text = event.target?.result as string;
+             if (!text) {
+                setError('File is empty.');
+                setIsProcessing(false);
+                return;
+            }
+
+            // Handle UTF-8 BOM (Byte Order Mark) which can be present in files from Excel
+            if (text.charCodeAt(0) === 0xFEFF) {
+                text = text.slice(1);
+            }
+            
             try {
                 const lines = text.trim().split(/\r?\n/);
                 if (lines.length < 2) {
@@ -60,11 +71,19 @@ const CSVImportModal: React.FC<CSVImportModalProps> = ({ onClose, onImport }) =>
                 }
 
                 const seenEmails = new Set<string>();
-                const users: ParsedUser[] = lines.slice(1).map((line, index): ParsedUser | null => {
+                const users: ParsedUser[] = lines.slice(1).map((line): ParsedUser | null => {
                     if (!line.trim()) return null; // Skip empty lines
-                    const values = line.split(',');
-                    const name = values[nameIndex]?.trim() || '';
-                    const email = values[emailIndex]?.trim().toLowerCase() || '';
+                    
+                    // Robust CSV parsing: split by comma but ignore commas inside double quotes.
+                    const values = line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
+                                   .map(v => v.trim().replace(/^"|"$/g, '')); // Remove quotes from start/end
+
+                    if (values.length !== headers.length) {
+                        return { name: line, email: '', status: 'invalid' as const, error: 'Column count mismatch.' };
+                    }
+
+                    const name = values[nameIndex] || '';
+                    const email = (values[emailIndex] || '').toLowerCase();
 
                     if (!name || !email) {
                         return { name, email, status: 'invalid' as const, error: 'Missing name or email.' };
