@@ -224,14 +224,14 @@ const App: React.FC = () => {
         return () => subscription.unsubscribe();
     }, [setupUserSession]);
 
-    const logout = async () => {
+    const logout = useCallback(async () => {
         await supabase.auth.signOut();
         setUser(null);
         setWorkshops([]);
         setEmployees([]);
-    };
+    }, []);
     
-    const addWorkshop = async (workshopData: { title: string; total_sessions: number; weekday: string; time: string }, hosts: Employee[], participants: Employee[]) => {
+    const addWorkshop = useCallback(async (workshopData: { title: string; total_sessions: number; weekday: string; time: string }, hosts: Employee[], participants: Employee[]) => {
         if (!user) throw new Error("User must be logged in to create a workshop.");
 
         try {
@@ -299,9 +299,9 @@ const App: React.FC = () => {
             console.error("Error in addWorkshop:", error);
             throw error;
         }
-    };
+    }, [user, employees, fetchWorkshops]);
     
-    const addEmployees = async (newEmployees: { name: string; email: string }[]) => {
+    const addEmployees = useCallback(async (newEmployees: { name: string; email: string }[]) => {
         setIsLoading(true);
         try {
             const existingEmails = new Set(employees.map(e => e.email.toLowerCase()));
@@ -339,9 +339,21 @@ const App: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [employees, fetchEmployees]);
 
-    const updateSession = async (session: SessionWithRecords) => {
+    const updateSessionInState = useCallback((updatedSession: SessionWithRecords) => {
+        setWorkshops(prev => prev.map(ws => {
+            if (ws.id === updatedSession.workshop_id) {
+                return {
+                    ...ws,
+                    sessions: ws.sessions.map(s => s.id === updatedSession.id ? updatedSession : s)
+                };
+            }
+            return ws;
+        }));
+    }, []);
+
+    const updateSession = useCallback(async (session: SessionWithRecords) => {
         const { session_participant_records, ...sessionData } = session;
         const { id: sessionId, ...sessionUpdateData } = sessionData;
 
@@ -354,27 +366,15 @@ const App: React.FC = () => {
             if (recordError) throw recordError;
         }
         updateSessionInState(session);
-    };
+    }, [updateSessionInState]);
 
-    const deleteWorkshop = async (workshopId: string) => {
+    const deleteWorkshop = useCallback(async (workshopId: string) => {
         const { error } = await supabase.from('workshops').delete().eq('id', workshopId);
         if (error) throw error;
         setWorkshops(prev => prev.filter(ws => ws.id !== workshopId));
-    };
+    }, []);
     
-    const updateSessionInState = (updatedSession: SessionWithRecords) => {
-        setWorkshops(prev => prev.map(ws => {
-            if (ws.id === updatedSession.workshop_id) {
-                return {
-                    ...ws,
-                    sessions: ws.sessions.map(s => s.id === updatedSession.id ? updatedSession : s)
-                };
-            }
-            return ws;
-        }));
-    };
-    
-    const updateParticipantRecordInState = (updatedRecord: SessionParticipantRecord) => {
+    const updateParticipantRecordInState = useCallback((updatedRecord: SessionParticipantRecord) => {
          setWorkshops(prev => prev.map(ws => {
             const sessionToUpdate = ws.sessions.find(s => s.id === updatedRecord.session_id);
             if (sessionToUpdate) {
@@ -393,7 +393,7 @@ const App: React.FC = () => {
             }
             return ws;
         }));
-    };
+    }, []);
 
     const value = useMemo(() => ({
         user,
@@ -407,7 +407,7 @@ const App: React.FC = () => {
         deleteWorkshop,
         updateSessionInState,
         updateParticipantRecordInState
-    }), [user, workshops, employees, isLoading]);
+    }), [user, workshops, employees, isLoading, logout, addWorkshop, addEmployees, updateSession, deleteWorkshop, updateSessionInState, updateParticipantRecordInState]);
 
     return (
         <AppContext.Provider value={value}>
