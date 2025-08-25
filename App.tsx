@@ -317,18 +317,24 @@ const App: React.FC = () => {
                 }
             }
             
-            let error: string | null = null;
-
-            if (employeesToInsert.length > 0) {
-                const { error: insertError } = await supabase.from('employees').insert(employeesToInsert);
-                if (insertError) {
-                    throw insertError;
-                }
+            if (employeesToInsert.length === 0) {
+                 return { newCount: 0, duplicateCount, error: null };
             }
 
-            await fetchEmployees();
+            const { data: insertedData, error: insertError } = await supabase
+                .from('employees')
+                .insert(employeesToInsert)
+                .select();
 
-            return { newCount: employeesToInsert.length, duplicateCount, error };
+            if (insertError) {
+                throw insertError;
+            }
+
+            if (insertedData) {
+                setEmployees(prevEmployees => [...insertedData, ...prevEmployees]);
+            }
+
+            return { newCount: insertedData?.length || 0, duplicateCount, error: null };
 
         } catch (err: any) {
             console.error("Error adding employees:", err);
@@ -339,7 +345,7 @@ const App: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [employees, fetchEmployees]);
+    }, [employees]);
 
     const updateSessionInState = useCallback((updatedSession: SessionWithRecords) => {
         setWorkshops(prev => prev.map(ws => {
