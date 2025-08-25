@@ -4,8 +4,8 @@ import type { AppContextType, Workshop, Employee } from '../types';
 import { PlusIcon, UsersIcon, CalendarIcon, ClockIcon, XMarkIcon, TrashIcon, ExclamationTriangleIcon } from '../components/Icons';
 import { useNavigate } from 'react-router-dom';
 import UserSearchModal from '../components/UserSearchModal';
+import CSVImportModal from '../components/CSVImportModal';
 
-// Omitted WorkshopCard, CreateWorkshopModal, DeleteWorkshopModal for brevity as they are unchanged
 const WorkshopCard: React.FC<{ workshop: Workshop, onDelete: () => void, canDelete: boolean }> = ({ workshop, onDelete, canDelete }) => {
     const navigate = useNavigate();
     
@@ -123,7 +123,7 @@ const CreateWorkshopModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
         }
     };
 
-    const UserTag: React.FC<{ user: Employee, onRemove: () => void }> = ({ user, onRemove }) => (
+    const UserTag: React.FC<{ user: { id: string; name: string; email: string }, onRemove: () => void }> = ({ user, onRemove }) => (
         <span className="inline-flex items-center gap-x-2 rounded-md bg-gray-100 px-2.5 py-1 text-sm font-medium text-gray-700">
             {user.name}
             <button type="button" onClick={onRemove} className="group relative -mr-1 h-3.5 w-3.5 rounded-sm hover:bg-gray-500/20">
@@ -142,7 +142,6 @@ const CreateWorkshopModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
                         <p className="mt-1 text-sm text-gray-600">Fill in the details below to schedule a new workshop series.</p>
                     </div>
                     <div className="px-6 py-4 space-y-6 border-t border-b border-gray-200">
-                        {/* Form fields are unchanged */}
                         <div>
                             <label htmlFor="title" className="block text-sm font-medium text-gray-700">Workshop Title</label>
                             <input type="text" id="title" value={title} onChange={e => setTitle(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
@@ -155,7 +154,13 @@ const CreateWorkshopModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
                             <div>
                                 <label htmlFor="weekday" className="block text-sm font-medium text-gray-700">Day of the week</label>
                                 <select id="weekday" value={weekday} onChange={e => setWeekday(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
-                                    <option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option>
+                                    <option value="1">Monday</option>
+                                    <option value="2">Tuesday</option>
+                                    <option value="3">Wednesday</option>
+                                    <option value="4">Thursday</option>
+                                    <option value="5">Friday</option>
+                                    <option value="6">Saturday</option>
+                                    <option value="0">Sunday</option>
                                 </select>
                             </div>
                             <div>
@@ -173,36 +178,99 @@ const CreateWorkshopModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
                                 <PlusIcon className="h-4 w-4 mr-1" /> Add Host
                             </button>
                         </fieldset>
+
                          <fieldset className="border-t border-gray-200 pt-4">
                             <legend className="text-lg font-medium text-gray-900">Participants</legend>
                              <div className="mt-2 p-2 min-h-[50px] bg-gray-50 rounded-md border flex flex-wrap gap-2">
                                 {selectedParticipants.map(p => <UserTag key={p.id} user={p} onRemove={() => setSelectedParticipants(selectedParticipants.filter(sp => sp.id !== p.id))} />)}
                             </div>
-                            <button type="button" onClick={() => setIsParticipantModalOpen(true)} className="mt-2 text-sm font-medium text-primary hover:text-primary-700 flex items-center">
-                                <PlusIcon className="h-4 w-4 mr-1" /> Add Participant
-                            </button>
+                            <div className="flex items-center space-x-4 mt-2">
+                                <button type="button" onClick={() => setIsParticipantModalOpen(true)} className="text-sm font-medium text-primary hover:text-primary-700 flex items-center">
+                                    <PlusIcon className="h-4 w-4 mr-1" /> Add Participant
+                                </button>
+                            </div>
                         </fieldset>
                     </div>
                     <div className="p-4 bg-gray-50 flex justify-end space-x-3 sticky bottom-0 z-10">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50">Cancel</button>
-                        <button type="submit" disabled={isCreating} className="px-4 py-2 text-sm font-medium text-white bg-primary border border-transparent rounded-md shadow-sm hover:bg-primary-700 disabled:bg-primary-300">
+                        <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">Cancel</button>
+                        <button type="submit" disabled={isCreating} className="px-4 py-2 text-sm font-medium text-white bg-primary border border-transparent rounded-md shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:bg-primary-300">
                             {isCreating ? 'Creating...' : 'Create Workshop'}
                         </button>
                     </div>
                 </form>
             </div>
-            {isHostModalOpen && <UserSearchModal allUsers={employees} alreadySelected={selectedHosts.concat(selectedParticipants)} onClose={() => setIsHostModalOpen(false)} onSelect={(user) => {setSelectedHosts([...selectedHosts, user]); setIsHostModalOpen(false);}} title="Add Host" />}
-            {isParticipantModalOpen && <UserSearchModal allUsers={employees} alreadySelected={selectedHosts.concat(selectedParticipants)} onClose={() => setIsParticipantModalOpen(false)} onSelect={(user) => {setSelectedParticipants([...selectedParticipants, user]); setIsParticipantModalOpen(false);}} title="Add Participant" />}
+            {isHostModalOpen && (
+                <UserSearchModal 
+                    allUsers={employees}
+                    alreadySelected={[...selectedHosts, ...selectedParticipants]}
+                    onClose={() => setIsHostModalOpen(false)}
+                    onSelect={(user) => {
+                        if (!selectedHosts.some(h => h.id === user.id)) {
+                            setSelectedHosts([...selectedHosts, user]);
+                        }
+                        setIsHostModalOpen(false);
+                    }}
+                    title="Add Host"
+                />
+            )}
+             {isParticipantModalOpen && (
+                <UserSearchModal 
+                    allUsers={employees}
+                    alreadySelected={[...selectedHosts, ...selectedParticipants]}
+                    onClose={() => setIsParticipantModalOpen(false)}
+                    onSelect={(user) => {
+                        if (!selectedParticipants.some(p => p.id === user.id)) {
+                            setSelectedParticipants([...selectedParticipants, user]);
+                        }
+                        setIsParticipantModalOpen(false);
+                    }}
+                    title="Add Participant"
+                />
+            )}
         </div>
     );
 };
 
-const DeleteWorkshopModal: React.FC<{ workshop: Workshop; onClose: () => void; onConfirm: () => void; isDeleting: boolean; }> = ({ workshop, onClose, onConfirm, isDeleting }) => {
+const DeleteWorkshopModal: React.FC<{
+    workshop: Workshop;
+    onClose: () => void;
+    onConfirm: () => void;
+    isDeleting: boolean;
+}> = ({ workshop, onClose, onConfirm, isDeleting }) => {
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
-                <div className="p-6 flex"><div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10"><ExclamationTriangleIcon className="h-6 w-6 text-red-600" aria-hidden="true" /></div><div className="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left"><h3 className="text-lg font-semibold leading-6 text-gray-900">Delete Workshop</h3><div className="mt-2"><p className="text-sm text-gray-500">Are you sure you want to permanently delete the workshop <strong className="font-medium text-gray-800">"{workshop.title}"</strong>? All of its sessions and data will be removed. This action cannot be undone.</p></div></div></div>
-                <div className="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6"><button type="button" onClick={onConfirm} disabled={isDeleting} className="inline-flex w-full justify-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:ml-3 sm:w-auto disabled:bg-red-300">{isDeleting ? 'Deleting...' : 'Delete'}</button><button type="button" onClick={onClose} className="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto">Cancel</button></div>
+                <div className="p-6 flex">
+                    <div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                        <ExclamationTriangleIcon className="h-6 w-6 text-red-600" aria-hidden="true" />
+                    </div>
+                    <div className="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left">
+                        <h3 className="text-lg font-semibold leading-6 text-gray-900">Delete Workshop</h3>
+                        <div className="mt-2">
+                            <p className="text-sm text-gray-500">
+                                Are you sure you want to permanently delete the workshop{' '}
+                                <strong className="font-medium text-gray-800">"{workshop.title}"</strong>? All of its sessions and data will be removed. This action cannot be undone.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div className="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+                    <button
+                        type="button"
+                        onClick={onConfirm}
+                        disabled={isDeleting}
+                        className="inline-flex w-full justify-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:ml-3 sm:w-auto disabled:bg-red-300"
+                    >
+                        {isDeleting ? 'Deleting...' : 'Delete'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto"
+                    >
+                        Cancel
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -214,8 +282,14 @@ const DashboardPage: React.FC = () => {
     const [workshopToDelete, setWorkshopToDelete] = useState<Workshop | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
 
+    const isManager = user?.role === 'manager';
+
     const { currentAndUpcoming, previous } = useMemo(() => {
-        const sortedWorkshops = [...workshops].sort((a, b) => new Date(a.sessions[0]?.date || 0).getTime() - new Date(b.sessions[0]?.date || 0).getTime());
+        const sortedWorkshops = [...workshops].sort((a, b) => {
+            const dateA = new Date(a.sessions[0]?.date || 0).getTime();
+            const dateB = new Date(b.sessions[0]?.date || 0).getTime();
+            return dateB - dateA;
+        });
         return {
             currentAndUpcoming: sortedWorkshops.filter(ws => ws.sessions.some(s => s.status !== 'ended')),
             previous: sortedWorkshops.filter(ws => ws.sessions.every(s => s.status === 'ended'))
@@ -228,50 +302,71 @@ const DashboardPage: React.FC = () => {
         try {
             await deleteWorkshop(workshopToDelete.id);
             setWorkshopToDelete(null);
-        } catch (error) { console.error("Failed to delete workshop on page:", error); } 
-        finally { setIsDeleting(false); }
+        } catch (error) {
+            console.error("Failed to delete workshop on page:", error);
+        } finally {
+            setIsDeleting(false);
+        }
     };
 
-    if (isLoading && workshops.length === 0) {
-        return <div className="text-center p-10">Loading dashboard...</div>;
+    if (isLoading) {
+        return <div className="text-center p-10">Loading workshops...</div>;
     }
 
     return (
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div className="flex justify-between items-center mb-8">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900">Manager Dashboard</h1>
+                    <h1 className="text-3xl font-bold text-gray-900">{isManager ? 'Manager Dashboard' : 'My Assigned Workshops'}</h1>
                     <p className="mt-1 text-lg text-gray-600">Welcome back, {user?.name}!</p>
                 </div>
-                <button
-                    onClick={() => setIsModalOpen(true)}
-                    className="flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary hover:bg-primary-700"
-                >
-                    <PlusIcon className="h-5 w-5 mr-2" />
-                    Create Workshop
-                </button>
+                {isManager && (
+                    <button
+                        onClick={() => setIsModalOpen(true)}
+                        className="flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                    >
+                        <PlusIcon className="h-5 w-5 mr-2" />
+                        Create Workshop
+                    </button>
+                )}
             </div>
+
             {isModalOpen && <CreateWorkshopModal onClose={() => setIsModalOpen(false)} />}
-            {workshopToDelete && <DeleteWorkshopModal workshop={workshopToDelete} onClose={() => setWorkshopToDelete(null)} onConfirm={handleConfirmDelete} isDeleting={isDeleting} />}
+            
+            {workshopToDelete && (
+                <DeleteWorkshopModal 
+                    workshop={workshopToDelete}
+                    onClose={() => setWorkshopToDelete(null)}
+                    onConfirm={handleConfirmDelete}
+                    isDeleting={isDeleting}
+                />
+            )}
+            
             <div className="space-y-12">
                 <div>
                     <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2 mb-6">Current & Upcoming</h2>
                     {currentAndUpcoming.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {currentAndUpcoming.map(ws => <WorkshopCard key={ws.id} workshop={ws} onDelete={() => setWorkshopToDelete(ws)} canDelete={true} />)}
+                            {currentAndUpcoming.map(ws => <WorkshopCard key={ws.id} workshop={ws} onDelete={() => setWorkshopToDelete(ws)} canDelete={isManager} />)}
                         </div>
                     ) : (
-                        <div className="text-center py-10 bg-white rounded-lg shadow-md border"><p className="text-gray-500">No current or upcoming workshops.</p><button onClick={() => setIsModalOpen(true)} className="mt-4 text-sm font-medium text-primary hover:text-primary-700">Create your first workshop</button></div>
+                        <div className="text-center py-10 bg-white rounded-lg shadow-md border">
+                            <p className="text-gray-500">No current or upcoming workshops.</p>
+                             {isManager && <button onClick={() => setIsModalOpen(true)} className="mt-4 text-sm font-medium text-primary hover:text-primary-700">Create your first workshop</button>}
+                        </div>
                     )}
                 </div>
+
                 <div>
                     <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2 mb-6">Previous Workshops</h2>
                     {previous.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {previous.map(ws => <WorkshopCard key={ws.id} workshop={ws} onDelete={() => setWorkshopToDelete(ws)} canDelete={true} />)}
+                            {previous.map(ws => <WorkshopCard key={ws.id} workshop={ws} onDelete={() => setWorkshopToDelete(ws)} canDelete={isManager} />)}
                         </div>
                     ) : (
-                        <div className="text-center py-10 bg-white rounded-lg shadow-md border"><p className="text-gray-500">No previously completed workshops.</p></div>
+                        <div className="text-center py-10 bg-white rounded-lg shadow-md border">
+                            <p className="text-gray-500">No previously completed workshops.</p>
+                        </div>
                     )}
                 </div>
             </div>

@@ -1,25 +1,34 @@
-// --- Base Database table shapes ---
+// Types for the application, designed to work with Supabase
+
+// --- Database table shapes (based on your Supabase schema) ---
 
 export type Employee = {
-  id: string;
+  id: string; // This should be the auth.users.id for employees who can be hosts
   name: string;
   email: string;
   created_at: string;
 };
 
-// Host is now structurally the same as a Participant for a given workshop
+// This type represents a host linked to a workshop. It's enriched with name/email on the client.
 export type Host = {
-  id: string;
+  user_id: string;
+  name?: string;  // Optional: added on the client from the employees list
+  email?: string; // Optional: added on the client from the employees list
+};
+
+export type Participant = {
+  id: string; // This is the ID from the 'participants' join table
   workshop_id: string;
+  employee_id: string; // This is the FK to the employees table
+  // Client-side enriched data from the related employee record
   name: string;
   email: string;
 };
 
-export type Participant = {
-  id: string;
-  workshop_id: string;
-  name: string;
-  email: string;
+export type Feedback = {
+  interactive: number;
+  helpful: number;
+  overall: number;
 };
 
 export type HostReflection = {
@@ -37,7 +46,7 @@ export type SessionParticipantRecord = {
   session_id: string;
   participant_id: string;
   attendance: 'pending' | 'present';
-  feedback?: { interactive: number; helpful: number; overall: number; } | null;
+  feedback?: Feedback | null;
 };
 
 export type Session = {
@@ -59,7 +68,17 @@ export type RawWorkshop = {
   created_at: string;
 };
 
-// --- Composite types for client-side state ---
+export type ChatMessage = {
+  id: number;
+  session_id: string;
+  sender_id: string;
+  sender_name: string;
+  message: string;
+  created_at: string;
+};
+
+
+// --- Composite types for client-side state (combining table data) ---
 
 export type SessionWithRecords = Session & {
   session_participant_records: SessionParticipantRecord[];
@@ -74,31 +93,15 @@ export type Workshop = RawWorkshop & {
 
 // --- User and Context types ---
 
-// Represents the permanently logged-in manager
-export interface ManagerUser {
-  id: string;
-  name: string;
-  email: string;
-  role: 'manager';
-}
-
-// Represents the user's role for a specific session (stored in sessionStorage)
 export interface SessionUser {
-  id: string; // Can be participant ID or host email
+  id: string;
   name: string;
   email: string;
   role: 'manager' | 'host' | 'participant';
 }
 
-// Represents the temporary host access grant
-export interface HostSession {
-    workshopId: string;
-    hostEmail: string;
-    hostName: string;
-}
-
 export interface AppContextType {
-  user: ManagerUser | null; // Only managers can be permanently logged-in
+  user: SessionUser | null;
   workshops: Workshop[];
   employees: Employee[];
   isLoading: boolean;
@@ -118,21 +121,75 @@ export interface AppContextType {
 export type Database = {
   public: {
     Tables: {
-      employees: { Row: Employee; Insert: any; Update: any; };
-      chat_messages: { Row: any; Insert: any; Update: any; };
-      hosts: {
-        Row: Host;
-        Insert: { workshop_id: string; name: string; email: string; };
-        Update: { workshop_id?: string; name?: string; email?: string; };
+      employees: {
+        Row: Employee;
+        Insert: { id: string; name: string; email: string; };
+        Update: Partial<Employee>;
+        Relationships: [];
       };
-      participants: { Row: Participant; Insert: any; Update: any; };
-      session_participant_records: { Row: SessionParticipantRecord; Insert: any; Update: any; };
-      sessions: { Row: Session; Insert: any; Update: any; };
-      workshops: { Row: RawWorkshop; Insert: any; Update: any; };
+      chat_messages: {
+        Row: ChatMessage;
+        Insert: { session_id: string; sender_id: string; sender_name: string; message: string; };
+        Update: Partial<ChatMessage>;
+        Relationships: [];
+      };
+      hosts: {
+        Row: {
+          id: string;
+          workshop_id: string;
+          user_id: string;
+        };
+        Insert: {
+          workshop_id: string;
+          user_id: string;
+        };
+        Update: Partial<{
+          id: string;
+          workshop_id: string;
+          user_id: string;
+        }>;
+        Relationships: [];
+      };
+      participants: {
+        Row: {
+          id: string;
+          workshop_id: string;
+          employee_id: string;
+        };
+        Insert: { workshop_id: string; employee_id: string; };
+        Update: Partial<{ id: string; workshop_id: string; employee_id: string; }>;
+        Relationships: [];
+      };
+      session_participant_records: {
+        Row: SessionParticipantRecord;
+        Insert: { session_id: string; participant_id: string; attendance: 'pending' | 'present'; };
+        Update: Partial<SessionParticipantRecord>;
+        Relationships: [];
+      };
+      sessions: {
+        Row: Session;
+        Insert: { workshop_id: string; session_number: number; title: string; date: string; start_time: string; end_time: string; status: "scheduled" | "live" | "ended"; };
+        Update: Partial<Session>;
+        Relationships: [];
+      };
+      workshops: {
+        Row: RawWorkshop;
+        Insert: { title: string; manager_id: string; };
+        Update: Partial<RawWorkshop>;
+        Relationships: [];
+      };
     };
-    Views: { [_ in never]: never; };
-    Functions: { is_manager: { Args: Record<PropertyKey, never>; Returns: boolean; }; };
-    Enums: { [_ in never]: never; };
-    CompositeTypes: { [_ in never]: never; };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      [_ in never]: never;
+    };
+    Enums: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
   };
 };

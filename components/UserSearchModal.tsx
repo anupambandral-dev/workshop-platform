@@ -1,11 +1,12 @@
 
+
 import React, { useState, useMemo } from 'react';
 import type { Employee } from '../types';
 import { SearchIcon, XMarkIcon } from './Icons';
 
 interface UserSearchModalProps {
   allUsers: Employee[];
-  alreadySelected: Employee[];
+  alreadySelected: { email: string }[];
   onClose: () => void;
   onSelect: (user: Employee) => void;
   title: string;
@@ -15,9 +16,9 @@ const UserSearchModal: React.FC<UserSearchModalProps> = ({ allUsers, alreadySele
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredUsers = useMemo(() => {
-    const selectedIds = new Set(alreadySelected.map(u => u.id));
+    const selectedEmails = new Set(alreadySelected.map(u => u.email.toLowerCase()));
     return allUsers.filter(user => 
-      !selectedIds.has(user.id) &&
+      !selectedEmails.has(user.email.toLowerCase()) &&
       (user.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
        user.email.toLowerCase().includes(searchTerm.toLowerCase()))
     );
