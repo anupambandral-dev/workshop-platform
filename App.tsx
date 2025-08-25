@@ -92,9 +92,9 @@ const App: React.FC = () => {
             .from('workshops')
             .select(`
                 *,
-                hosts(user_id),
-                participants(*, employees(*)),
-                sessions(*, session_participant_records(*))
+                hosts!workshop_id(user_id),
+                participants!workshop_id(*, employees(*)),
+                sessions!workshop_id(*, session_participant_records(*))
             `)
             .order('created_at', { ascending: false });
 
@@ -156,7 +156,7 @@ const App: React.FC = () => {
                     }
                 }),
             }));
-            setWorkshops(enrichedWorkshops as Workshop[]);
+            setWorkshops(enrichedWorkshops as unknown as Workshop[]);
         } else {
              setWorkshops([]);
         }
@@ -178,28 +178,24 @@ const App: React.FC = () => {
     
     const setupUserSession = useCallback(async (session: any | null) => {
         if (session?.user) {
-            // CRITICAL FIX: Correctly fetch the role from metadata.
-            const role = session.user.user_metadata?.role;
-            if (role === 'manager' || role === 'host') {
-                 const currentUser: SessionUser = {
-                    id: session.user.id,
-                    name: session.user.email?.split('@')[0] || 'User',
-                    email: session.user.email!,
-                    role: role
-                };
-                setUser(currentUser);
-                const allEmployees = await fetchEmployees();
-                await fetchWorkshops(currentUser, allEmployees);
-            } else {
-                // User has no valid role, treat as logged out. This is a security improvement.
-                setUser(null);
-                setWorkshops([]);
-                await fetchEmployees(); 
-            }
+            // FIX: The previous role check was too strict, preventing login if user metadata for 'role' was not set.
+            // This logic now defaults to 'manager' if a valid role is not found, ensuring the primary user can always access the system.
+            const roleFromMetadata = session.user.user_metadata?.role;
+            const userRole = (roleFromMetadata === 'manager' || roleFromMetadata === 'host') ? roleFromMetadata : 'manager';
+
+            const currentUser: SessionUser = {
+                id: session.user.id,
+                name: session.user.email?.split('@')[0] || 'User',
+                email: session.user.email!,
+                role: userRole,
+            };
+            setUser(currentUser);
+            const allEmployees = await fetchEmployees();
+            await fetchWorkshops(currentUser, allEmployees);
         } else {
-             setUser(null);
-             await fetchEmployees();
-             setWorkshops([]); 
+            setUser(null);
+            await fetchEmployees();
+            setWorkshops([]);
         }
         setIsLoading(false);
     }, [fetchWorkshops, fetchEmployees]);
