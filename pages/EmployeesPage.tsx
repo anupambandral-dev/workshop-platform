@@ -1,7 +1,7 @@
 import React, { useState, useContext } from 'react';
 import { AppContext } from '../App';
 import type { AppContextType } from '../types';
-import { PlusIcon, UsersIcon } from '../components/Icons';
+import { PlusIcon, UsersIcon, ExclamationTriangleIcon } from '../components/Icons';
 import CSVImportModal from '../components/CSVImportModal';
 
 const EmployeesPage: React.FC = () => {
@@ -41,17 +41,23 @@ const EmployeesPage: React.FC = () => {
                 </button>
             </div>
             
-            {importResult && (
-                <div className={`mb-6 p-4 rounded-md ${importResult.error ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
-                    {importResult.error ? (
-                        <p><strong>Import Failed:</strong> {importResult.error}</p>
-                    ) : (
-                        <p>
-                            <strong>Import Complete:</strong> {importResult.newCount} new employees added. {importResult.duplicateCount} duplicates were skipped.
-                        </p>
-                    )}
+            {importResult && importResult.error && (
+                <div className="mb-6 p-4 rounded-md bg-red-100 border border-red-400 text-red-800 flex items-start">
+                    <ExclamationTriangleIcon className="h-6 w-6 mr-3 flex-shrink-0" aria-hidden="true" />
+                    <div>
+                        <h3 className="font-bold">Import Failed</h3>
+                        <p className="text-sm mt-1">{importResult.error}</p>
+                    </div>
                 </div>
             )}
+            {importResult && !importResult.error && (
+                <div className="mb-6 p-4 rounded-md bg-green-100 text-green-800">
+                    <p>
+                        <strong>Import Complete:</strong> {importResult.newCount} new employees added. {importResult.duplicateCount} duplicates were skipped.
+                    </p>
+                </div>
+            )}
+
 
             <div className="bg-white shadow-md rounded-lg overflow-hidden border">
                 <div className="px-6 py-4 border-b">
