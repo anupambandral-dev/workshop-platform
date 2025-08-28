@@ -143,26 +143,31 @@ const App: React.FC = () => {
     useEffect(() => {
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             setIsLoading(true);
-            const currentUser = session?.user;
-            if (currentUser) {
-                const { data: employee, error } = await supabase
-                    .from('employees')
-                    .select('name')
-                    .eq('id', currentUser.id)
-                    .single();
-                
-                if (error) console.error("Error fetching user's name:", error);
+            if (session) {
+                const { data: { user: currentUser } } = await supabase.auth.getUser();
 
-                const role = session?.user.app_metadata.role || 'participant';
-                const sessionUser: SessionUser = {
-                    id: currentUser.id,
-                    email: currentUser.email!,
-                    name: employee?.name || currentUser.email!,
-                    role: role,
-                };
-                setUser(sessionUser);
-                await fetchData(currentUser.id, role);
+                if (currentUser) {
+                    const { data: employee, error } = await supabase
+                        .from('employees')
+                        .select('name')
+                        .eq('id', currentUser.id)
+                        .single();
+                    
+                    if (error) console.error("Error fetching user's name:", error);
 
+                    const role = currentUser.app_metadata?.role || 'participant';
+                    const sessionUser: SessionUser = {
+                        id: currentUser.id,
+                        email: currentUser.email!,
+                        name: employee?.name || currentUser.email!,
+                        role: role as 'manager' | 'host' | 'participant',
+                    };
+                    setUser(sessionUser);
+                    await fetchData(currentUser.id, role);
+                } else {
+                    setUser(null);
+                    setWorkshops([]);
+                }
             } else {
                 setUser(null);
                 setWorkshops([]);
