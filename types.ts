@@ -98,11 +98,13 @@ export interface SessionUser {
   name: string;
   email: string;
   role: 'manager' | 'host' | 'participant';
+  sessionId?: string; // Used for temporary host sessions
 }
 
 export interface AppContextType {
   user: SessionUser | null;
-  workshops: Workshop[];
+  workshops: Workshop[]; // Filtered list for the logged-in user
+  allWorkshops: Workshop[]; // Unfiltered list for public pages
   employees: Employee[];
   isLoading: boolean;
   logout: () => Promise<void>;

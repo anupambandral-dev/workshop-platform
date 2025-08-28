@@ -1,26 +1,52 @@
 import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
-import { AppContextType } from '../types';
+import { AppContextType, SessionUser } from '../types';
 import { CalendarIcon, ClockIcon, UsersIcon, ClipboardIcon } from '../components/Icons';
 
 type Tab = 'details' | 'go-live' | 'attendance' | 'reflection';
 
 const SessionDetailPage: React.FC = () => {
     const { workshopId, sessionId } = useParams<{ workshopId: string, sessionId: string }>();
-    const { workshops, updateSession, user } = useContext(AppContext) as AppContextType;
+    const { allWorkshops, updateSession, user: managerUser } = useContext(AppContext) as AppContextType;
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState<Tab>('details');
     
+    const [activeTab, setActiveTab] = useState<Tab>('details');
+    const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
+
     const { workshop, session } = useMemo(() => {
-        if (!workshopId || !sessionId || workshops.length === 0) {
+        if (!workshopId || !sessionId || allWorkshops.length === 0) {
             return { workshop: null, session: null };
         }
-        const ws = workshops.find(w => w.id === workshopId);
+        const ws = allWorkshops.find(w => w.id === workshopId);
         if (!ws) return { workshop: null, session: null };
         const s = ws.sessions.find(s => s.id === sessionId);
         return { workshop: ws, session: s || null };
-    }, [workshops, workshopId, sessionId]);
+    }, [allWorkshops, workshopId, sessionId]);
+
+    // Determine authorization: Manager or temporary host session
+    useEffect(() => {
+        if (managerUser) { // Manager is logged in
+            setCurrentUser(managerUser);
+            return;
+        }
+
+        // Check for temporary host session
+        let hostSessionUser: SessionUser | null = null;
+        try {
+            const stored = sessionStorage.getItem('workshop_session_user');
+            if (stored) hostSessionUser = JSON.parse(stored);
+        } catch (e) { /* ignore */ }
+
+        if (hostSessionUser && hostSessionUser.role === 'host' && hostSessionUser.sessionId === sessionId) {
+            setCurrentUser(hostSessionUser);
+        } else {
+            // If neither manager nor valid host, redirect
+            if (allWorkshops.length > 0) { // Avoid redirecting while workshops are still loading
+               navigate(`/host/session/${sessionId}/login`);
+            }
+        }
+    }, [managerUser, sessionId, allWorkshops, navigate]);
 
     // State for the controlled form
     const [formData, setFormData] = useState({
@@ -39,16 +65,18 @@ const SessionDetailPage: React.FC = () => {
                 start_time: session.start_time,
                 end_time: session.end_time,
             });
-            // Set initial active tab based on session status
             setActiveTab(session.status === 'ended' ? 'attendance' : 'details');
         }
     }, [session]);
     
-    if (!workshop || !session) {
+    if (!workshop || !session || !currentUser) {
         return <div className="p-10 text-center">Loading session details...</div>;
     }
     
-    const shareableLink = `${window.location.origin}${window.location.pathname.split('#')[0]}#/session/${session.id}/join`;
+    const shareableLinks = {
+        participant: `${window.location.origin}${window.location.pathname.split('#')[0]}#/session/${session.id}/join`,
+        host: `${window.location.origin}${window.location.pathname.split('#')[0]}#/host/session/${session.id}/login`,
+    };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { id, value } = e.target;
@@ -71,10 +99,10 @@ const SessionDetailPage: React.FC = () => {
     };
 
     const handleGoLive = async () => {
-        if (session && user) {
+        if (session && currentUser) {
             await updateSession({ ...session, status: 'live' });
-            // Critical fix: Set the session user for the manager/host
-            sessionStorage.setItem('workshop_session_user', JSON.stringify(user));
+            // Set the session user for both manager and host
+            sessionStorage.setItem('workshop_session_user', JSON.stringify(currentUser));
             navigate(`/session/${session.id}/live`);
         }
     };
@@ -82,7 +110,9 @@ const SessionDetailPage: React.FC = () => {
     return (
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div className="mb-6">
-                <Link to={`/workshop/${workshopId}`} className="text-sm font-medium text-primary hover:text-primary-700">&larr; Back to Workshop</Link>
+                {currentUser.role === 'manager' && (
+                    <Link to={`/workshop/${workshopId}`} className="text-sm font-medium text-primary hover:text-primary-700">&larr; Back to Workshop</Link>
+                )}
                 <h1 className="text-3xl font-bold text-gray-900 mt-2">{session.title}</h1>
                 <p className="text-lg text-gray-600">{workshop.title}</p>
                  <div className="flex items-center text-md text-gray-500 mt-2 space-x-4">
@@ -99,16 +129,16 @@ const SessionDetailPage: React.FC = () => {
 
             {session.status !== 'ended' && (
                 <div className="mb-6 p-4 bg-primary-50 border border-primary-200 rounded-lg">
-                    <label htmlFor="share-link" className="block text-sm font-medium text-gray-700 mb-1">Shareable Join Link</label>
+                    <label htmlFor="share-link" className="block text-sm font-medium text-gray-700 mb-1">Shareable Join Link (for Participants)</label>
                     <div className="relative">
                         <input
                             type="text"
                             id="share-link"
                             readOnly
-                            value={shareableLink}
+                            value={shareableLinks.participant}
                             onClick={(e) => {
                                 (e.target as HTMLInputElement).select();
-                                navigator.clipboard.writeText(shareableLink).then(() => alert('Link copied to clipboard!'));
+                                navigator.clipboard.writeText(shareableLinks.participant).then(() => alert('Link copied to clipboard!'));
                             }}
                             className="block w-full text-sm text-primary-700 bg-white rounded-md border-gray-300 shadow-sm focus:ring-primary focus:border-primary cursor-pointer pr-10"
                             aria-label="Shareable session join link"
