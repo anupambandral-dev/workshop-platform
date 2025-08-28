@@ -8,7 +8,7 @@ import { supabase } from '../services/supabase';
 const JoinSessionPage: React.FC = () => {
     const { sessionId } = useParams<{ sessionId: string }>();
     const navigate = useNavigate();
-    const { allWorkshops, updateSession } = useContext(AppContext) as AppContextType;
+    const { allWorkshops } = useContext(AppContext) as AppContextType;
 
     const [email, setEmail] = useState('');
     const [error, setError] = useState('');
@@ -58,15 +58,17 @@ const JoinSessionPage: React.FC = () => {
                     const updateAttendanceAndNavigate = async () => {
                         if (!identifiedParticipant) return;
 
-                        // CRITICAL FIX: Update attendance in the database first
-                        const { error } = await supabase
-                            .from('session_participant_records')
-                            .update({ attendance: 'present' })
-                            .eq('id', identifiedParticipant.record.id);
+                        // Securely mark attendance via Edge Function
+                        const { error } = await supabase.functions.invoke('mark-attendance', {
+                            body: {
+                                sessionId: session.id,
+                                email: identifiedParticipant.participant.email,
+                            },
+                        });
                         
                         if (error) {
-                            console.error("Failed to update attendance on real-time join:", error);
-                            // Proceed to join even if DB update fails, to not block the user
+                            console.error("Failed to invoke mark-attendance function:", error);
+                            // Proceed to join even if it fails, to not block the user
                         }
 
                         // Now set storage and navigate
@@ -106,9 +108,13 @@ const JoinSessionPage: React.FC = () => {
             
             // If the session is live, mark attendance and redirect immediately
             if (session.status === 'live') {
-                const updatedRecord = { ...record, attendance: 'present' as const };
-                const updatedRecords = session.session_participant_records.map(r => r.id === updatedRecord.id ? updatedRecord : r);
-                await updateSession({ ...session, session_participant_records: updatedRecords });
+                 // Securely mark attendance via Edge Function
+                await supabase.functions.invoke('mark-attendance', {
+                    body: {
+                        sessionId: session.id,
+                        email: participant.email,
+                    },
+                });
 
                 sessionStorage.setItem('workshop_session_user', JSON.stringify({
                     id: participant.id,
