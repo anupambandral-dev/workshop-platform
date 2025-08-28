@@ -2,7 +2,6 @@ import React, { useState, useContext, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
 import { supabase } from '../services/supabase';
-// FIX: Replaced non-existent 'SessionUser' with 'CurrentUser' and imported it.
 import type { AppContextType, Workshop, ChatMessage, Participant, CurrentUser, Host, Session, SessionWithRecords, HostReflection, SessionParticipantRecord } from '../types';
 import { UsersIcon, SendIcon, CheckCircleIcon } from '../components/Icons';
 
@@ -68,7 +67,6 @@ const ParticipantsPanel: React.FC<{ hosts: Host[], participants: Participant[], 
             </h3>
             <ul className="divide-y max-h-96 overflow-y-auto">
                 {hosts.map(host => (
-                    // FIX: Use `employee_id` for the key as `user_id` does not exist on the Host type.
                     <li key={host.employee_id} className="p-3 flex items-center justify-between">
                         <span className="font-semibold text-gray-800">{host.name}</span>
                         <span className="px-2 py-0.5 text-xs font-medium text-primary-800 bg-primary-100 rounded-full">Host</span>
@@ -178,7 +176,7 @@ const HostReflectionModal: React.FC<{
 
 const LiveSessionPage: React.FC = () => {
     const { sessionId } = useParams<{ sessionId: string }>();
-    const { workshops, updateSession, updateSessionInState, updateParticipantRecordInState } = useContext(AppContext) as AppContextType;
+    const { allWorkshops, updateSession, updateSessionInState, updateParticipantRecordInState } = useContext(AppContext) as AppContextType;
     const navigate = useNavigate();
 
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -188,13 +186,13 @@ const LiveSessionPage: React.FC = () => {
     const [pageState, setPageState] = useState<'loading' | 'live' | 'ended' | 'error'>('loading');
 
     const { workshop, session } = useMemo(() => {
-        if (!sessionId || workshops.length === 0) return { workshop: null, session: null };
-        for (const ws of workshops) {
+        if (!sessionId || allWorkshops.length === 0) return { workshop: null, session: null };
+        for (const ws of allWorkshops) {
             const s = ws.sessions.find(s => s.id === sessionId);
             if (s) return { workshop: ws, session: s };
         }
         return { workshop: null, session: null };
-    }, [sessionId, workshops]);
+    }, [sessionId, allWorkshops]);
 
     useEffect(() => {
         let sessionUser: CurrentUser | null = null;
@@ -209,7 +207,7 @@ const LiveSessionPage: React.FC = () => {
         }
         setCurrentUser(sessionUser);
 
-        if (workshops.length > 0 && !session) {
+        if (allWorkshops.length > 0 && !session) {
              setPageState('error');
              return;
         }
@@ -224,7 +222,7 @@ const LiveSessionPage: React.FC = () => {
                 setPageState('live');
             }
         }
-    }, [sessionId, workshops, workshop, session, navigate]);
+    }, [sessionId, allWorkshops, workshop, session, navigate]);
     
     // Real-time subscriptions
     useEffect(() => {
@@ -324,74 +322,78 @@ const LiveSessionPage: React.FC = () => {
                         </button>
                      </div>
                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-220px)]">
-                        <div className="lg:col-span-2 h-full">
-                             {currentUser && <ChatPanel chat={chatMessages} currentUser={currentUser} onSend={() => {}} isReadOnly={true} />}
+                        <div className="lg:col-span-2">
+                             <ChatPanel chat={chatMessages} currentUser={currentUser!} onSend={handleSendMessage} isReadOnly={true} />
                         </div>
-                        <div className="h-full">
-                             <ParticipantsPanel hosts={workshop.hosts} participants={workshop.participants} session={session} />
+                        <div>
+                            <ParticipantsPanel hosts={workshop.hosts} participants={workshop.participants} session={session} />
                         </div>
-                    </div>
+                     </div>
                  </div>
             );
         }
-        
-        // Ended view for participants with conditional feedback link
-        const myRecord = currentUser ? session.session_participant_records.find(r => r.participant_id === currentUser.id) : null;
-        const attended = myRecord?.attendance === 'present';
-        
+        // Participant's ended view
         return (
-            <div className="container mx-auto px-4 py-8">
-                <div className="text-center my-20">
-                    <h1 className="text-3xl font-bold text-gray-900">{workshop.title} - {session.title}</h1>
-                    <p className="mt-4 text-lg text-gray-600">This session has ended.</p>
-                    {attended && (
-                         <div className="mt-8">
-                            <p className="text-gray-700 mb-4">Thank you for your participation!</p>
-                            <a 
-                                href="https://echogb.typeform.com/to/cY2oFNyx" 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="px-6 py-3 text-base font-medium text-white bg-primary rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-                            >
-                                Provide Feedback
-                            </a>
-                         </div>
-                     )}
-                </div>
-            </div>
+             <div className="flex flex-col items-center justify-center min-h-screen text-center p-4">
+                 <div className="bg-white p-12 rounded-lg shadow-xl border">
+                    <CheckCircleIcon className="h-16 w-16 text-green-500 mx-auto" />
+                    <h2 className="mt-6 text-3xl font-extrabold text-gray-900">Session Ended</h2>
+                    <p className="mt-2 text-lg text-gray-600">Thank you for your participation!</p>
+                     <p className="mt-1 text-gray-500">{workshop.title} - {session.title}</p>
+                     <div className="mt-8">
+                         <a 
+                             href="https://echogb.typeform.com/to/cY2oFNyx" 
+                             target="_blank" 
+                             rel="noopener noreferrer"
+                             className="px-6 py-3 text-base font-medium text-white bg-primary rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                         >
+                             Provide Feedback
+                         </a>
+                     </div>
+                 </div>
+             </div>
         );
     }
 
-    return ( // Live state
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div className="flex justify-between items-center mb-6">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900">{workshop.title}</h1>
-                    <p className="text-lg text-gray-600">{session.title} - Session is live</p>
-                </div>
-                {isHost && (
-                    <button onClick={() => setIsReflectionModalOpen(true)} className="px-5 py-3 font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
-                        End Session for All
-                    </button>
-                )}
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-220px)]">
-                <div className="lg:col-span-2 h-full">
-                    {currentUser && <ChatPanel chat={chatMessages} currentUser={currentUser} onSend={handleSendMessage} />}
-                </div>
-                <div className="h-full">
-                    <ParticipantsPanel hosts={workshop.hosts} participants={workshop.participants} session={session} />
-                </div>
-            </div>
-
-            {isReflectionModalOpen && (
-                <HostReflectionModal
+    // Live view for both host and participant
+    return (
+         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+             {isReflectionModalOpen && isHost && (
+                <HostReflectionModal 
                     participants={workshop.participants}
                     onClose={() => setIsReflectionModalOpen(false)}
                     onSubmit={handleSaveReflection}
                 />
-            )}
-        </div>
+             )}
+             <div className="flex justify-between items-center mb-8">
+                <div>
+                    <h1 className="text-3xl font-bold text-gray-900">{workshop.title} - {session.title}</h1>
+                    <p className="mt-2 text-lg text-gray-600 flex items-center">
+                        <span className="relative flex h-3 w-3 mr-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                        </span>
+                        Session is Live
+                    </p>
+                </div>
+                {isHost && (
+                    <button
+                        onClick={() => setIsReflectionModalOpen(true)}
+                        className="px-5 py-3 font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                    >
+                        End Session
+                    </button>
+                )}
+             </div>
+             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-220px)]">
+                <div className="lg:col-span-2">
+                     <ChatPanel chat={chatMessages} currentUser={currentUser!} onSend={handleSendMessage} />
+                </div>
+                <div>
+                    <ParticipantsPanel hosts={workshop.hosts} participants={workshop.participants} session={session} />
+                </div>
+             </div>
+         </div>
     );
 };
 

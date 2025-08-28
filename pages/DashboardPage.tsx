@@ -275,7 +275,6 @@ const DeleteWorkshopModal: React.FC<{
 };
 
 const DashboardPage: React.FC = () => {
-    // FIX: Destructure 'currentUser' from context as 'user' does not exist on AppContextType.
     const { workshops, isLoading, currentUser, deleteWorkshop } = useContext(AppContext) as AppContextType;
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [workshopToDelete, setWorkshopToDelete] = useState<Workshop | null>(null);

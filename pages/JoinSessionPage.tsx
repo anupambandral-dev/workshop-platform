@@ -8,7 +8,7 @@ import { supabase } from '../services/supabase';
 const JoinSessionPage: React.FC = () => {
     const { sessionId } = useParams<{ sessionId: string }>();
     const navigate = useNavigate();
-    const { workshops, updateSession } = useContext(AppContext) as AppContextType;
+    const { allWorkshops, updateSession } = useContext(AppContext) as AppContextType;
 
     const [email, setEmail] = useState('');
     const [error, setError] = useState('');
@@ -19,26 +19,26 @@ const JoinSessionPage: React.FC = () => {
     const [identifiedParticipant, setIdentifiedParticipant] = useState<{ workshop: Workshop, session: SessionWithRecords, participant: Participant, record: SessionParticipantRecord } | null>(null);
 
     const { workshop, session } = useMemo(() => {
-        if (!sessionId || workshops.length === 0) {
+        if (!sessionId || allWorkshops.length === 0) {
             return { workshop: null, session: null };
         }
-        for (const ws of workshops) {
+        for (const ws of allWorkshops) {
             const s = ws.sessions.find(s => s.id === sessionId);
             if (s) {
                 return { workshop: ws, session: s };
             }
         }
         return { workshop: null, session: null };
-    }, [sessionId, workshops]);
+    }, [sessionId, allWorkshops]);
     
     useEffect(() => {
-       if (workshops.length > 0) {
+       if (allWorkshops.length > 0) {
            setIsLoading(false);
            if (!session) {
                setError("Session not found.");
            }
        }
-    }, [workshops, session]);
+    }, [allWorkshops, session]);
 
     // Real-time listener for the waiting page
     useEffect(() => {
