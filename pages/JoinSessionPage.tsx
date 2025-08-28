@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useMemo } from 'react';
+import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
 import type { Workshop, AppContextType, Session, Participant, SessionWithRecords, SessionParticipantRecord } from '../types';
@@ -17,6 +17,12 @@ const JoinSessionPage: React.FC = () => {
     // State to manage the participant's view
     const [view, setView] = useState<'email_input' | 'status_view'>('email_input');
     const [identifiedParticipant, setIdentifiedParticipant] = useState<{ workshop: Workshop, session: SessionWithRecords, participant: Participant, record: SessionParticipantRecord } | null>(null);
+    
+    // Use a ref to hold the latest participant data to avoid stale state in the subscription callback
+    const participantRef = useRef(identifiedParticipant);
+    useEffect(() => {
+        participantRef.current = identifiedParticipant;
+    }, [identifiedParticipant]);
 
     const { workshop, session } = useMemo(() => {
         if (!sessionId || allWorkshops.length === 0) {
@@ -56,13 +62,14 @@ const JoinSessionPage: React.FC = () => {
                 if ((payload.new as Session).status === 'live') {
                     // Host has started the session, update attendance and redirect participant
                     const updateAttendanceAndNavigate = async () => {
-                        if (!identifiedParticipant) return;
+                        // Use the ref here to get the LATEST participant data
+                        if (!participantRef.current) return;
 
                         // Securely mark attendance via Edge Function
                         const { error } = await supabase.functions.invoke('mark-attendance', {
                             body: {
                                 sessionId: session.id,
-                                email: identifiedParticipant.participant.email,
+                                email: participantRef.current.participant.email,
                             },
                         });
                         
@@ -73,9 +80,9 @@ const JoinSessionPage: React.FC = () => {
 
                         // Now set storage and navigate
                         sessionStorage.setItem('workshop_session_user', JSON.stringify({
-                            id: identifiedParticipant.participant.id,
-                            name: identifiedParticipant.participant.name,
-                            email: identifiedParticipant.participant.email,
+                            id: participantRef.current.participant.id,
+                            name: participantRef.current.participant.name,
+                            email: participantRef.current.participant.email,
                             role: 'participant',
                         }));
                         navigate(`/session/${sessionId}/live`);
@@ -89,7 +96,7 @@ const JoinSessionPage: React.FC = () => {
             supabase.removeChannel(channel);
         };
 
-    }, [view, session, sessionId, navigate, identifiedParticipant]);
+    }, [view, session, sessionId, navigate]);
 
     const handleIdentify = async (e: React.FormEvent) => {
         e.preventDefault();
