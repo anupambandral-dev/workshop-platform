@@ -251,6 +251,13 @@ const App: React.FC = () => {
                 currentDate.setDate(currentDate.getDate() + 1);
             }
 
+            // Calculate end_time as start_time + 1 hour. This prevents database errors
+            // if there's a check constraint (end_time > start_time) and is better practice.
+            const [startHours, startMinutes] = workshopData.time.split(':').map(Number);
+            const tempDate = new Date(0); // Use a neutral date object to avoid DST issues with local time
+            tempDate.setUTCHours(startHours + 1, startMinutes, 0, 0); // Add 1 hour
+            const endTime = tempDate.toISOString().substring(11, 16); // Extract HH:mm
+
             for (let i = 1; i <= workshopData.total_sessions; i++) {
                 sessionsToCreate.push({
                     workshop_id: workshop.id,
@@ -258,7 +265,7 @@ const App: React.FC = () => {
                     title: `Session ${i}`,
                     date: currentDate.toISOString().split('T')[0],
                     start_time: workshopData.time,
-                    end_time: workshopData.time,
+                    end_time: endTime, // Use calculated end time
                     status: 'scheduled' as const,
                 });
                 currentDate.setDate(currentDate.getDate() + 7);
