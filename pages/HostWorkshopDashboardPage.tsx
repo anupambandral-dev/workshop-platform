@@ -14,17 +14,19 @@ const HostWorkshopDashboardPage: React.FC = () => {
     // Security check: ensure the current user is an authorized host for this workshop
     useEffect(() => {
         // Only run the check after the initial loading is complete.
-        if (!isLoading) {
-            if (!currentUser || currentUser.role !== 'host' || currentUser.workshopId !== workshopId) {
-                // If not authorized, clear any potential stale session and redirect to the host login page
-                logout();
-                navigate(`/host/workshop/${workshopId}/login`);
-            }
+        if (isLoading) {
+            return; // Wait for user state to be determined
         }
-    }, [currentUser, workshopId, navigate, logout, isLoading]);
+
+        // If loading is finished and the user is not an authorized host, redirect.
+        if (!currentUser || currentUser.role !== 'host' || currentUser.workshopId !== workshopId) {
+            // No need to call logout(), just redirect. This prevents an infinite loop.
+            navigate(`/host/workshop/${workshopId}/login`);
+        }
+    }, [currentUser, workshopId, navigate, isLoading]);
 
     if (isLoading || !workshop || !currentUser) {
-        return <div className="p-10 text-center">Loading workshop details...</div>;
+        return <div className="p-10 text-center">Verifying access and loading workshop details...</div>;
     }
     
     const getStatusChip = (status: 'scheduled' | 'live' | 'ended') => {
