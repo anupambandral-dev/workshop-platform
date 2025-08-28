@@ -140,7 +140,10 @@ const App: React.FC = () => {
                         email: employee?.email || 'unknown@example.com' 
                     };
                 }),
-                sessions: (ws.sessions || []).sort((a: Session, b: Session) => a.session_number - b.session_number),
+                sessions: (ws.sessions || []).map((s: any) => ({
+                    ...s,
+                    session_participant_records: s.session_participant_records || [],
+                })).sort((a: Session, b: Session) => a.session_number - b.session_number),
             }));
             setWorkshops(enrichedWorkshops);
         }
@@ -215,8 +218,6 @@ const App: React.FC = () => {
             throw new Error(`Failed to create workshop. ${error.message || 'Please check the function logs.'}`);
         }
 
-        // Enrich the single new workshop returned from the function, eliminating the need to re-fetch.
-        // This is the key fix for the race condition.
         const enrichedWorkshop: Workshop = {
             ...(newWorkshopRaw as any),
             hosts: ((newWorkshopRaw as any).hosts || []).map((h: { user_id: string }) => {
@@ -235,10 +236,12 @@ const App: React.FC = () => {
                     email: employee?.email || 'unknown@example.com' 
                 };
             }),
-            sessions: ((newWorkshopRaw as any).sessions || []).sort((a: Session, b: Session) => a.session_number - b.session_number),
+            sessions: ((newWorkshopRaw as any).sessions || []).map((s: any) => ({
+                ...s,
+                session_participant_records: s.session_participant_records || [],
+            })).sort((a: Session, b: Session) => a.session_number - b.session_number),
         };
     
-        // Prepend the new workshop to the existing list, triggering a single, safe re-render.
         setWorkshops(prevWorkshops => [enrichedWorkshop, ...prevWorkshops]);
 
     }, [user, employees]);
