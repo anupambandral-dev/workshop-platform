@@ -141,53 +141,53 @@ const App: React.FC = () => {
     }, []);
 
     useEffect(() => {
+        // Set up the listener for authentication state changes.
+        // This is the single source of truth for the user's session state.
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             setIsLoading(true);
+
             if (session) {
-                // Explicitly fetch the user to ensure app_metadata is up-to-date.
-                const { data: { user: freshUser }, error: getUserError } = await supabase.auth.getUser();
+                // A user is logged in.
+                const user = session.user;
+                
+                // Fetch the employee's name to display it.
+                const { data: employee } = await supabase
+                    .from('employees')
+                    .select('name')
+                    .eq('id', user.id)
+                    .single();
 
-                if (getUserError) {
-                    console.error("Error fetching user data:", getUserError);
-                    setUser(null);
-                    setWorkshops([]);
-                    setEmployees([]);
-                } else if (freshUser) {
-                    const { data: employee, error: employeeError } = await supabase
-                        .from('employees')
-                        .select('name')
-                        .eq('id', freshUser.id)
-                        .single();
-                    
-                    if (employeeError) console.error("Error fetching user's name:", employeeError);
+                // As requested, designate any logged-in user as a manager.
+                const role = 'manager'; 
 
-                    const role = 'manager'; // Any logged-in user is designated as the manager.
-                    const sessionUser: SessionUser = {
-                        id: freshUser.id,
-                        email: freshUser.email!,
-                        name: employee?.name || freshUser.email!,
-                        role: role as 'manager' | 'host' | 'participant',
-                    };
-                    setUser(sessionUser);
-                    await fetchData(freshUser.id, role);
-                } else {
-                    // This case is unlikely if a session exists, but is a safe fallback.
-                    setUser(null);
-                    setWorkshops([]);
-                    setEmployees([]);
-                }
+                const sessionUser: SessionUser = {
+                    id: user.id,
+                    email: user.email!,
+                    name: employee?.name || user.email!,
+                    role: role,
+                };
+                
+                setUser(sessionUser);
+                await fetchData(user.id, role);
+
             } else {
-                // If there's no session, ensure all user-related state is cleared.
-                // This is crucial for fixing the incognito/caching bug.
+                // A user has logged out or the session expired.
+                // This is the CRITICAL step to prevent the "incognito-only" login bug.
+                // We must clear all user-specific state to ensure the app is in a clean
+                // state for the next login attempt.
                 setUser(null);
                 setWorkshops([]);
                 setEmployees([]);
             }
+
+            // All auth-related fetching and state setting is complete.
             setIsLoading(false);
         });
 
+        // Clean up the subscription when the component unmounts.
         return () => subscription.unsubscribe();
-    }, [fetchData]);
+    }, [fetchData]); // Dependency on fetchData ensures the latest version is used.
+
 
     const logout = useCallback(async () => {
         // The onAuthStateChange listener is the single source of truth for clearing state.
