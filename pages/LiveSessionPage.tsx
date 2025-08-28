@@ -291,14 +291,18 @@ const LiveSessionPage: React.FC = () => {
 
     const handleSaveReflection = async (reflection: HostReflection) => {
         if (!session) return;
-        // This will now trigger the real-time update for all participants
-        await updateSession({
-            ...session,
-            status: 'ended',
-            host_reflection: reflection,
-        });
-        setIsReflectionModalOpen(false);
-        setPageState('ended');
+        try {
+            await updateSession({
+                ...session,
+                status: 'ended',
+                host_reflection: reflection,
+            });
+            setIsReflectionModalOpen(false);
+            setPageState('ended');
+        } catch (error: any) {
+            console.error("Failed to save reflection and end session:", error);
+            alert(`Error: Could not end session. Please try again. Details: ${error.message}`);
+        }
     };
 
     if (!workshop || !session) {
@@ -337,7 +341,7 @@ const LiveSessionPage: React.FC = () => {
              <div className="flex flex-col items-center justify-center min-h-screen text-center p-4">
                  <div className="bg-white p-12 rounded-lg shadow-xl border">
                     <CheckCircleIcon className="h-16 w-16 text-green-500 mx-auto" />
-                    <h2 className="mt-6 text-3xl font-extrabold text-gray-900">Session Ended</h2>
+                    <h2 className="mt-6 text-3xl font-extrapold text-gray-900">Session Ended</h2>
                     <p className="mt-2 text-lg text-gray-600">Thank you for your participation!</p>
                      <p className="mt-1 text-gray-500">{workshop.title} - {session.title}</p>
                      <div className="mt-8">
