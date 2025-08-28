@@ -12,8 +12,8 @@ export type Employee = {
 // This type represents a host linked to a workshop. It's enriched with name/email on the client.
 export type Host = {
   employee_id: string;
-  name?: string;  // Optional: added on the client from the employees list
-  email?: string; // Optional: added on the client from the employees list
+  name: string;
+  email: string;
 };
 
 export type Participant = {
@@ -93,21 +93,26 @@ export type Workshop = RawWorkshop & {
 
 // --- User and Context types ---
 
-export interface SessionUser {
+// Represents the currently authenticated identity, either a logged-in manager
+// or a host who has authenticated via a passwordless link for a specific workshop.
+export interface CurrentUser {
   id: string;
   name: string;
   email: string;
   role: 'manager' | 'host' | 'participant';
-  sessionId?: string; // Used for temporary host sessions
+  // For hosts, this stores the workshop they are authorized to manage.
+  workshopId?: string; 
 }
 
+
 export interface AppContextType {
-  user: SessionUser | null;
+  currentUser: CurrentUser | null;
   workshops: Workshop[]; // Filtered list for the logged-in user
   allWorkshops: Workshop[]; // Unfiltered list for public pages
   employees: Employee[];
   isLoading: boolean;
   logout: () => Promise<void>;
+  setCurrentUser: (user: CurrentUser | null) => void;
   addWorkshop: (
     workshopData: { title: string; total_sessions: number; weekday: string; time: string },
     hosts: Employee[], 

@@ -2,12 +2,13 @@ import React, { useState, useContext, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
 import { supabase } from '../services/supabase';
-import type { AppContextType, Workshop, ChatMessage, Participant, Feedback, SessionUser, Host, Session, SessionWithRecords, HostReflection, SessionParticipantRecord } from '../types';
+// FIX: Replaced non-existent 'SessionUser' with 'CurrentUser' and imported it.
+import type { AppContextType, Workshop, ChatMessage, Participant, CurrentUser, Host, Session, SessionWithRecords, HostReflection, SessionParticipantRecord } from '../types';
 import { UsersIcon, SendIcon, CheckCircleIcon } from '../components/Icons';
 
 // --- Helper Components ---
 
-const ChatPanel: React.FC<{ chat: ChatMessage[], currentUser: SessionUser, onSend: (message: string) => void, isReadOnly?: boolean }> = ({ chat, currentUser, onSend, isReadOnly = false }) => {
+const ChatPanel: React.FC<{ chat: ChatMessage[], currentUser: CurrentUser, onSend: (message: string) => void, isReadOnly?: boolean }> = ({ chat, currentUser, onSend, isReadOnly = false }) => {
     const [message, setMessage] = useState('');
     const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -67,7 +68,8 @@ const ParticipantsPanel: React.FC<{ hosts: Host[], participants: Participant[], 
             </h3>
             <ul className="divide-y max-h-96 overflow-y-auto">
                 {hosts.map(host => (
-                    <li key={host.user_id} className="p-3 flex items-center justify-between">
+                    // FIX: Use `employee_id` for the key as `user_id` does not exist on the Host type.
+                    <li key={host.employee_id} className="p-3 flex items-center justify-between">
                         <span className="font-semibold text-gray-800">{host.name}</span>
                         <span className="px-2 py-0.5 text-xs font-medium text-primary-800 bg-primary-100 rounded-full">Host</span>
                     </li>
@@ -180,7 +182,7 @@ const LiveSessionPage: React.FC = () => {
     const navigate = useNavigate();
 
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-    const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
+    const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
     const [isHost, setIsHost] = useState(false);
     const [isReflectionModalOpen, setIsReflectionModalOpen] = useState(false);
     const [pageState, setPageState] = useState<'loading' | 'live' | 'ended' | 'error'>('loading');
@@ -195,7 +197,7 @@ const LiveSessionPage: React.FC = () => {
     }, [sessionId, workshops]);
 
     useEffect(() => {
-        let sessionUser: SessionUser | null = null;
+        let sessionUser: CurrentUser | null = null;
         try {
             const stored = sessionStorage.getItem('workshop_session_user');
             if (stored) sessionUser = JSON.parse(stored);

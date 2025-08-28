@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect, createContext } from 'react';
 import { HashRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { supabase } from './services/supabase';
-import type { AppContextType, Workshop, SessionUser, SessionWithRecords, Employee, SessionParticipantRecord, Host, Database } from './types';
+import type { AppContextType, Workshop, CurrentUser, SessionWithRecords, Employee, SessionParticipantRecord, Host, Database } from './types';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import JoinSessionPage from './pages/JoinSessionPage';
@@ -9,7 +9,8 @@ import LiveSessionPage from './pages/LiveSessionPage';
 import WorkshopDetailPage from './pages/WorkshopDetailPage';
 import SessionDetailPage from './pages/SessionDetailPage';
 import EmployeesPage from './pages/EmployeesPage';
-import HostLoginPage from './pages/HostLoginPage';
+import HostWorkshopLoginPage from './pages/HostWorkshopLoginPage';
+import HostWorkshopDashboardPage from './pages/HostWorkshopDashboardPage';
 import { LogoIcon } from './components/Icons';
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -17,23 +18,23 @@ export const AppContext = createContext<AppContextType | null>(null);
 const AppContent: React.FC = () => {
     const context = React.useContext(AppContext);
     if (!context) throw new Error("AppContext not found");
-    const { user, logout } = context;
+    const { currentUser, logout } = context;
     const location = useLocation();
 
-    // Hide logout on public-facing participant and host pages
+    // Hide logout on all public-facing pages
     const isPublicPage = location.pathname.startsWith('/session/') || location.pathname.startsWith('/host/');
-    const isManager = user?.role === 'manager';
+    const isManager = currentUser?.role === 'manager';
 
     return (
         <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
             <header className="bg-white shadow-sm">
                 <nav className="container mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex justify-between items-center py-4">
-                        <Link to={user ? "/dashboard" : "/login"} className="flex items-center space-x-3 cursor-pointer group" aria-label="Go to dashboard">
+                        <Link to={currentUser ? "/dashboard" : "/login"} className="flex items-center space-x-3 cursor-pointer group" aria-label="Go to dashboard">
                             <LogoIcon className="h-8 w-auto text-primary transition-transform group-hover:rotate-12" />
                             <span className="text-xl font-bold text-gray-800 hidden sm:block">Workshop Platform</span>
                         </Link>
-                        {user && !isPublicPage && (
+                        {currentUser && !isPublicPage && (
                              <div className="flex items-center space-x-4">
                                 {isManager && (
                                     <Link to="/employees" className="text-sm font-medium text-gray-700 hover:text-primary">
@@ -54,21 +55,24 @@ const AppContent: React.FC = () => {
             <main>
                 <Routes>
                     {/* Manager Routes */}
-                    <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <LoginPage />} />
+                    <Route path="/login" element={currentUser ? <Navigate to="/dashboard" /> : <LoginPage />} />
                     <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
                     <Route path="/employees" element={<ProtectedRoute><EmployeesPage /></ProtectedRoute>} />
                     <Route path="/workshop/:workshopId" element={<ProtectedRoute><WorkshopDetailPage /></ProtectedRoute>} />
                     
+                    {/* Host-specific Dashboard */}
+                    <Route path="/host/workshop/:workshopId/dashboard" element={<HostWorkshopDashboardPage />} />
+
                     {/* Shared manager/host route */}
                     <Route path="/workshop/:workshopId/session/:sessionId" element={<SessionDetailPage />} />
 
                     {/* Public Routes for Hosts & Participants */}
-                    <Route path="/host/session/:sessionId/login" element={<HostLoginPage />} />
+                    <Route path="/host/workshop/:workshopId/login" element={<HostWorkshopLoginPage />} />
                     <Route path="/session/:sessionId/join" element={<JoinSessionPage />} />
                     <Route path="/session/:sessionId/live" element={<LiveSessionPage />} />
 
                     {/* Default Route */}
-                    <Route path="*" element={<Navigate to={user ? "/dashboard" : "/login"} />} />
+                    <Route path="*" element={<Navigate to={currentUser ? "/dashboard" : "/login"} />} />
                 </Routes>
             </main>
         </div>
@@ -78,10 +82,10 @@ const AppContent: React.FC = () => {
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const context = React.useContext(AppContext);
     if (!context) throw new Error("AppContext not found");
-    const { user, isLoading } = context;
+    const { currentUser, isLoading } = context;
 
     if (isLoading) return <div className="p-10 text-center">Loading user session...</div>;
-    if (!user) {
+    if (!currentUser || currentUser.role !== 'manager') {
         return <Navigate to="/login" replace />;
     }
     return <>{children}</>;
@@ -89,12 +93,11 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 
 
 const App: React.FC = () => {
-    const [user, setUser] = useState<SessionUser | null>(null);
-    const [workshops, setWorkshops] = useState<Workshop[]>([]);
+    const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+    const [allWorkshops, setAllWorkshops] = useState<Workshop[]>([]);
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    // Re-architected data fetching logic
     const fetchAllData = useCallback(async () => {
         setIsLoading(true);
 
@@ -111,68 +114,57 @@ const App: React.FC = () => {
 
         const [employeesResult, workshopsResult] = await Promise.all([fetchEmployees, fetchWorkshops]);
 
-        const allEmployees = employeesResult.data || [];
-        setEmployees(allEmployees);
+        const allEmployeesData = employeesResult.data || [];
+        setEmployees(allEmployeesData);
 
         if (workshopsResult.error) {
             console.error('Error fetching workshops:', workshopsResult.error);
-            setWorkshops([]);
+            setAllWorkshops([]);
         } else if (workshopsResult.data) {
              const enrichedWorkshops = workshopsResult.data.map(ws => ({
                 ...ws,
                 hosts: (Array.isArray(ws.hosts) ? ws.hosts : []).map((host: any) => {
-                    const employee = allEmployees.find(emp => emp.id === host.employee_id);
+                    const employee = allEmployeesData.find(emp => emp.id === host.employee_id);
                     return {
                         employee_id: host.employee_id,
                         name: employee?.name || 'Unknown Host',
                         email: employee?.email || 'No email'
                     };
                 }),
-                participants: (Array.isArray(ws.participants) ? ws.participants : []).map((p: any) => {
-                    if (!p.employees) {
-                        return {
-                            id: p.id, workshop_id: p.workshop_id, employee_id: p.employee_id,
-                            name: p.name || 'Unknown Participant', email: p.email || 'No email'
-                        };
-                    }
-                    return {
-                        id: p.id, workshop_id: p.workshop_id, employee_id: p.employees.id,
-                        name: p.employees.name, email: p.employees.email,
-                    }
-                }),
+                participants: (Array.isArray(ws.participants) ? ws.participants : []).map((p: any) => ({
+                    id: p.id, workshop_id: p.workshop_id, employee_id: p.employee_id,
+                    name: p.employees?.name || p.name || 'Unknown Participant', 
+                    email: p.employees?.email || p.email || 'No email'
+                })),
                 sessions: (Array.isArray(ws.sessions) ? ws.sessions : []).map((session: any) => ({
                     ...session,
                     session_participant_records: session.session_participant_records || [],
                 })),
             }));
-            setWorkshops(enrichedWorkshops as unknown as Workshop[]);
+            setAllWorkshops(enrichedWorkshops as unknown as Workshop[]);
         } else {
-            setWorkshops([]);
+            setAllWorkshops([]);
         }
 
         setIsLoading(false);
-        return { allEmployees };
     }, []);
     
     const setupUserSession = useCallback(async (session: any | null) => {
         if (session?.user) {
-            const roleFromMetadata = session.user.user_metadata?.role;
-            const userRole = (roleFromMetadata === 'host') ? roleFromMetadata : 'manager';
-
-            const currentUser: SessionUser = {
+            const user: CurrentUser = {
                 id: session.user.id, name: session.user.email?.split('@')[0] || 'User',
-                email: session.user.email!, role: userRole,
+                email: session.user.email!, role: 'manager',
             };
-            setUser(currentUser);
+            setCurrentUser(user);
         } else {
-            setUser(null);
+            setCurrentUser(null);
         }
         setIsLoading(false);
     }, []);
 
     useEffect(() => {
         setIsLoading(true);
-        fetchAllData(); // Fetch all data on initial load. This is crucial for public pages.
+        fetchAllData(); 
         
         supabase.auth.getSession().then(({ data: { session } }) => {
             setupUserSession(session);
@@ -187,16 +179,15 @@ const App: React.FC = () => {
 
     const logout = useCallback(async () => {
         await supabase.auth.signOut();
-        sessionStorage.removeItem('workshop_session_user');
-        setUser(null);
+        setCurrentUser(null);
     }, []);
     
      const addWorkshop = useCallback(async (workshopData: { title: string; total_sessions: number; weekday: string; time: string }, hosts: Employee[], participants: Employee[]) => {
-        if (!user) throw new Error("User must be logged in to create a workshop.");
+        if (!currentUser || currentUser.role !== 'manager') throw new Error("User must be a manager to create a workshop.");
 
         const { data: workshop, error: workshopError } = await supabase
             .from('workshops')
-            .insert({ title: workshopData.title, manager_id: user.id })
+            .insert({ title: workshopData.title, manager_id: currentUser.id })
             .select().single();
         if (workshopError || !workshop) throw new Error(workshopError?.message || "Failed to create workshop.");
 
@@ -239,21 +230,17 @@ const App: React.FC = () => {
         const { error: recordsError } = await supabase.from('session_participant_records').insert(recordsToCreate);
         if (recordsError) throw new Error(recordsError.message);
 
-        await fetchAllData(); // Refresh all data after successful creation
-            
-    }, [user, fetchAllData]);
+        await fetchAllData();
+    }, [currentUser, fetchAllData]);
     
     const addEmployees = useCallback(async (newEmployees: { name: string; email: string }[]) => {
         setIsLoading(true);
         try {
             if (newEmployees.length === 0) return { error: null };
-            
             const { error: functionError } = await supabase.functions.invoke('import-employees', {
                 body: { users: newEmployees },
             });
-
             if (functionError) throw functionError;
-
             await fetchAllData();
             return { error: null };
         } catch (err: any) {
@@ -266,12 +253,9 @@ const App: React.FC = () => {
     }, [fetchAllData]);
 
     const updateSessionInState = useCallback((updatedSession: SessionWithRecords) => {
-        setWorkshops(prev => prev.map(ws => {
+        setAllWorkshops(prev => prev.map(ws => {
             if (ws.id === updatedSession.workshop_id) {
-                return {
-                    ...ws,
-                    sessions: ws.sessions.map(s => s.id === updatedSession.id ? updatedSession : s)
-                };
+                return { ...ws, sessions: ws.sessions.map(s => s.id === updatedSession.id ? updatedSession : s) };
             }
             return ws;
         }));
@@ -280,10 +264,8 @@ const App: React.FC = () => {
     const updateSession = useCallback(async (session: SessionWithRecords) => {
         const { session_participant_records, ...sessionData } = session;
         const { id: sessionId, ...sessionUpdateData } = sessionData;
-
         const { error } = await supabase.from('sessions').update(sessionUpdateData).eq('id', sessionId);
         if (error) throw error;
-
         for (const record of session_participant_records) {
              const { id: recordId, ...recordUpdateData } = record;
             const { error: recordError } = await supabase.from('session_participant_records').update(recordUpdateData).eq('id', recordId);
@@ -295,21 +277,18 @@ const App: React.FC = () => {
     const deleteWorkshop = useCallback(async (workshopId: string) => {
         const { error } = await supabase.from('workshops').delete().eq('id', workshopId);
         if (error) throw error;
-        setWorkshops(prev => prev.filter(ws => ws.id !== workshopId));
+        setAllWorkshops(prev => prev.filter(ws => ws.id !== workshopId));
     }, []);
     
     const updateParticipantRecordInState = useCallback((updatedRecord: SessionParticipantRecord) => {
-         setWorkshops(prev => prev.map(ws => {
+         setAllWorkshops(prev => prev.map(ws => {
             const sessionToUpdate = ws.sessions.find(s => s.id === updatedRecord.session_id);
             if (sessionToUpdate) {
                 return {
                     ...ws,
                     sessions: ws.sessions.map(s => {
                         if (s.id === updatedRecord.session_id) {
-                            return {
-                                ...s,
-                                session_participant_records: s.session_participant_records.map(r => r.id === updatedRecord.id ? updatedRecord : r)
-                            };
+                            return { ...s, session_participant_records: s.session_participant_records.map(r => r.id === updatedRecord.id ? updatedRecord : r) };
                         }
                         return s;
                     })
@@ -319,23 +298,20 @@ const App: React.FC = () => {
         }));
     }, []);
     
-    const workshopsForUser = useMemo(() => {
-        if (!user) return []; // Should not happen in protected routes, but good practice
-        if (user.role === 'manager') return workshops;
-        
-        // Filter for host
-        const hostEmployee = employees.find(emp => emp.email === user.email);
-        if (!hostEmployee) return [];
-
-        return workshops.filter(ws => 
-            ws.hosts.some(h => h.employee_id === hostEmployee.id)
-        );
-    }, [user, workshops, employees]);
+    const workshopsForCurrentUser = useMemo(() => {
+        if (!currentUser) return [];
+        if (currentUser.role === 'manager') return allWorkshops;
+        if (currentUser.role === 'host') {
+            return allWorkshops.filter(ws => ws.id === currentUser.workshopId);
+        }
+        return [];
+    }, [currentUser, allWorkshops]);
 
     const value = useMemo(() => ({
-        user,
-        workshops: workshopsForUser,
-        allWorkshops: workshops, // Provide all workshops for public pages
+        currentUser,
+        setCurrentUser,
+        workshops: workshopsForCurrentUser,
+        allWorkshops,
         employees,
         isLoading,
         logout,
@@ -345,7 +321,7 @@ const App: React.FC = () => {
         deleteWorkshop,
         updateSessionInState,
         updateParticipantRecordInState
-    }), [user, workshopsForUser, workshops, employees, isLoading, logout, addWorkshop, addEmployees, updateSession, deleteWorkshop, updateSessionInState, updateParticipantRecordInState]);
+    }), [currentUser, workshopsForCurrentUser, allWorkshops, employees, isLoading, logout, addWorkshop, addEmployees, updateSession, deleteWorkshop, updateSessionInState, updateParticipantRecordInState]);
 
     return (
         <AppContext.Provider value={value}>

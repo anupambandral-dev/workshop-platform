@@ -44,6 +44,8 @@ const WorkshopDetailPage: React.FC = () => {
             </div>
         </div>
     );
+    
+    const hostLoginLink = `${window.location.origin}${window.location.pathname.split('#')[0]}#/host/workshop/${workshop.id}/login`;
 
     return (
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -62,12 +64,15 @@ const WorkshopDetailPage: React.FC = () => {
                 </div>
             </div>
             
+            <div className="mb-6 p-4 bg-primary-50 border border-primary-200 rounded-lg">
+                <ShareableLink label="Host Login Link (for all sessions in this workshop)" link={hostLoginLink} />
+            </div>
+
             <div>
                 <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2 mb-6">Sessions</h2>
                 <div className="space-y-6">
                     {workshop.sessions.map(session => {
                         const participantLink = `${window.location.origin}${window.location.pathname.split('#')[0]}#/session/${session.id}/join`;
-                        const hostLink = `${window.location.origin}${window.location.pathname.split('#')[0]}#/host/session/${session.id}/login`;
                         
                         return (
                             <div key={session.id} className="bg-white p-4 rounded-lg shadow-sm border">
@@ -96,9 +101,8 @@ const WorkshopDetailPage: React.FC = () => {
                                     </div>
                                 </div>
                                 {session.status !== 'ended' && (
-                                    <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="mt-4 pt-4 border-t border-gray-100">
                                          <ShareableLink label="Participant Join Link" link={participantLink} />
-                                         <ShareableLink label="Host Login Link" link={hostLink} />
                                     </div>
                                 )}
                             </div>

@@ -275,12 +275,13 @@ const DeleteWorkshopModal: React.FC<{
 };
 
 const DashboardPage: React.FC = () => {
-    const { workshops, isLoading, user, deleteWorkshop } = useContext(AppContext) as AppContextType;
+    // FIX: Destructure 'currentUser' from context as 'user' does not exist on AppContextType.
+    const { workshops, isLoading, currentUser, deleteWorkshop } = useContext(AppContext) as AppContextType;
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [workshopToDelete, setWorkshopToDelete] = useState<Workshop | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
 
-    const isManager = user?.role === 'manager';
+    const isManager = currentUser?.role === 'manager';
 
     const { currentAndUpcoming, previous } = useMemo(() => {
         const sortedWorkshops = [...workshops].sort((a, b) => {
@@ -329,7 +330,7 @@ const DashboardPage: React.FC = () => {
             <div className="flex justify-between items-center mb-8">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-                    <p className="mt-1 text-lg text-gray-600">Welcome back, {user?.name || 'User'}.</p>
+                    <p className="mt-1 text-lg text-gray-600">Welcome back, {currentUser?.name || 'User'}.</p>
                 </div>
                 {isManager && (
                     <button
