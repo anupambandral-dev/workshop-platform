@@ -148,15 +148,18 @@ export type Database = {
           id: string;
           workshop_id: string;
           employee_id: string;
+          email: string | null;
         };
         Insert: {
           workshop_id: string;
           employee_id: string;
+          email: string;
         };
         Update: Partial<{
           id: string;
           workshop_id: string;
           employee_id: string;
+          email: string;
         }>;
         Relationships: [
           {
