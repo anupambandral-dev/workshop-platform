@@ -42,32 +42,18 @@ const EmployeesPage: React.FC = () => {
             </div>
             
             {importResult && importResult.error && (
-                <div className="mb-6 rounded-md bg-red-50 p-4 border border-red-200">
-                    <div className="flex">
-                        <div className="flex-shrink-0">
-                            <ExclamationTriangleIcon className="h-5 w-5 text-red-400" aria-hidden="true" />
-                        </div>
-                        <div className="ml-3">
-                            <h3 className="text-sm font-medium text-red-800">Import Failed</h3>
-                            <div className="mt-2 text-sm text-red-700">
-                                <p>{importResult.error}</p>
-                                <p className="mt-2">
-                                    <strong>Troubleshooting Steps:</strong>
-                                </p>
-                                <ul className="list-disc space-y-1 pl-5">
-                                    <li>Ensure the "import-employees" Edge Function is deployed in your Supabase project.</li>
-                                    <li>Check that the required Environment Variables (e.g., SUPABASE_SERVICE_ROLE_KEY) are set for the function in the Supabase Dashboard.</li>
-                                    <li>Verify that your 'employees' table has a UNIQUE constraint on the 'email' column.</li>
-                                </ul>
-                            </div>
-                        </div>
+                <div className="mb-6 p-4 rounded-md bg-red-100 border border-red-400 text-red-800 flex items-start">
+                    <ExclamationTriangleIcon className="h-6 w-6 mr-3 flex-shrink-0" aria-hidden="true" />
+                    <div>
+                        <h3 className="font-bold">Import Failed</h3>
+                        <p className="text-sm mt-1">{importResult.error}</p>
                     </div>
                 </div>
             )}
             {importResult && !importResult.error && (
                 <div className="mb-6 p-4 rounded-md bg-green-100 text-green-800">
                     <p>
-                        <strong>Import Successful:</strong> The employee list has been updated. Duplicates were ignored.
+                        <strong>Import Successful:</strong> The employee list has been updated.
                     </p>
                 </div>
             )}

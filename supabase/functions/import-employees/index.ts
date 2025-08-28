@@ -1,18 +1,8 @@
-// Add a declaration for the Deno global to satisfy TypeScript in non-Deno environments.
-declare const Deno: {
-  env: {
-    get: (key: string) => string | undefined;
-  };
-};
+/// <reference lib="deno.ns" />
 
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4';
-
-// Define CORS headers directly in the function to avoid import issues in the Supabase UI.
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { corsHeaders } from '../_shared/cors.ts';
 
 // Define the shape of the incoming request body
 interface ImportPayload {
@@ -67,10 +57,11 @@ serve(async (req: Request) => {
 
     console.log(`Attempting to upsert ${users.length} users.`);
 
-    // 5. Perform the upsert operation. This requires a UNIQUE constraint on the 'email' column.
+    // 5. Perform the upsert operation to add new employees and ignore existing ones.
+    // This requires a UNIQUE constraint on the 'email' column in the database schema.
     const { error } = await supabaseAdmin
       .from('employees')
-      .upsert(users, { onConflict: 'email' }); 
+      .upsert(users, { onConflict: 'email', ignoreDuplicates: true }); 
 
     if (error) {
       console.error('Supabase upsert error:', error);

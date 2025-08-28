@@ -285,18 +285,10 @@ const DashboardPage: React.FC = () => {
 
     const { currentAndUpcoming, previous } = useMemo(() => {
         const sortedWorkshops = [...workshops].sort((a, b) => {
-            const getSortDate = (ws: Workshop) => {
-                const firstSessionDate = ws.sessions?.[0]?.date;
-                // Use the first session date if available, otherwise fall back to the workshop's creation date.
-                const dateToSortBy = firstSessionDate || ws.created_at;
-                const time = new Date(dateToSortBy).getTime();
-                return isNaN(time) ? 0 : time;
-            };
-            const timeA = getSortDate(a);
-            const timeB = getSortDate(b);
-            return timeB - timeA; // Sort descending (newest first)
+            const dateA = new Date(a.sessions[0]?.date || 0).getTime();
+            const dateB = new Date(b.sessions[0]?.date || 0).getTime();
+            return dateB - dateA;
         });
-        
         return {
             currentAndUpcoming: sortedWorkshops.filter(ws => ws.sessions.some(s => s.status !== 'ended')),
             previous: sortedWorkshops.filter(ws => ws.sessions.every(s => s.status === 'ended'))
