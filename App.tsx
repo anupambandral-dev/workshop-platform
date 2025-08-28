@@ -144,7 +144,7 @@ const App: React.FC = () => {
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             setIsLoading(true);
             if (session) {
-                const { data: { user: currentUser } } = await supabase.auth.getUser();
+                const currentUser = session.user;
 
                 if (currentUser) {
                     const { data: employee, error } = await supabase
