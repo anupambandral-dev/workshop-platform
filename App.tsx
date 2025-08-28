@@ -124,15 +124,15 @@ const App: React.FC = () => {
         } else {
              const enrichedWorkshops = data.map((ws: any) => ({
                 ...ws,
-                hosts: ws.hosts.map((h: { user_id: string }) => {
+                hosts: (ws.hosts || []).map((h: { user_id: string }) => {
                     const employee = allEmployees.find(e => e.id === h.user_id);
                     return { user_id: h.user_id, name: employee?.name, email: employee?.email };
                 }),
-                participants: ws.participants.map((p: { id: string; employee_id: string; }) => {
+                participants: (ws.participants || []).map((p: { id: string; employee_id: string; }) => {
                     const employee = allEmployees.find(e => e.id === p.employee_id);
                     return { ...p, name: employee?.name, email: employee?.email };
                 }),
-                sessions: ws.sessions.sort((a: Session, b: Session) => a.session_number - b.session_number),
+                sessions: (ws.sessions || []).sort((a: Session, b: Session) => a.session_number - b.session_number),
             }));
             setWorkshops(enrichedWorkshops);
         }
