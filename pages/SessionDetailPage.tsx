@@ -8,11 +8,10 @@ type Tab = 'details' | 'go-live' | 'attendance' | 'reflection';
 
 const SessionDetailPage: React.FC = () => {
     const { workshopId, sessionId } = useParams<{ workshopId: string, sessionId: string }>();
-    const { allWorkshops, updateSession, currentUser } = useContext(AppContext) as AppContextType;
+    const { allWorkshops, updateSession, currentUser, isLoading } = useContext(AppContext) as AppContextType;
     const navigate = useNavigate();
     
     const [activeTab, setActiveTab] = useState<Tab>('details');
-    const [isAuthorized, setIsAuthorized] = useState(false);
 
     const { workshop, session } = useMemo(() => {
         if (!workshopId || !sessionId || allWorkshops.length === 0) {
@@ -25,25 +24,27 @@ const SessionDetailPage: React.FC = () => {
     }, [allWorkshops, workshopId, sessionId]);
 
     // Determine authorization based on the unified currentUser
-    useEffect(() => {
-        if (currentUser && workshop) {
-            if (currentUser.role === 'manager') {
-                setIsAuthorized(true);
-            } else if (currentUser.role === 'host' && currentUser.workshopId === workshop.id) {
-                setIsAuthorized(true);
-            } else {
-                setIsAuthorized(false);
-            }
-        } else {
-             setIsAuthorized(false);
+    const isAuthorized = useMemo(() => {
+        if (!currentUser || !workshop) {
+            return false;
         }
-        
-        // If not authorized after checks, redirect to appropriate login
-        if (allWorkshops.length > 0 && !isAuthorized && !currentUser) {
+        if (currentUser.role === 'manager') {
+            return true;
+        }
+        if (currentUser.role === 'host' && currentUser.workshopId === workshop.id) {
+            return true;
+        }
+        return false;
+    }, [currentUser, workshop]);
+
+    useEffect(() => {
+        // If data has loaded and we've determined the user is not authorized, redirect them.
+        if (!isLoading && allWorkshops.length > 0 && !isAuthorized) {
+            // A non-manager/host user might be here. The safest place to send them
+            // is the workshop's host login page, as they are not a manager.
             navigate(`/host/workshop/${workshopId}/login`);
         }
-        
-    }, [currentUser, workshop, workshopId, allWorkshops, navigate, isAuthorized]);
+    }, [isLoading, allWorkshops, isAuthorized, navigate, workshopId]);
 
     const [formData, setFormData] = useState({
         title: '',
@@ -65,8 +66,12 @@ const SessionDetailPage: React.FC = () => {
         }
     }, [session]);
     
-    if (!workshop || !session || !isAuthorized) {
-        return <div className="p-10 text-center">Loading or unauthorized...</div>;
+    if (isLoading || !workshop || !session) {
+        return <div className="p-10 text-center">Loading session...</div>;
+    }
+
+    if (!isAuthorized) {
+        return <div className="p-10 text-center">Checking authorization...</div>;
     }
     
     const shareableLink = `${window.location.origin}${window.location.pathname.split('#')[0]}#/session/${session.id}/join`;
