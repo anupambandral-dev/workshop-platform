@@ -6,21 +6,24 @@ import { CalendarIcon, ClockIcon, UsersIcon } from '../components/Icons';
 
 const HostWorkshopDashboardPage: React.FC = () => {
     const { workshopId } = useParams<{ workshopId: string }>();
-    const { allWorkshops, currentUser, logout } = useContext(AppContext) as AppContextType;
+    const { allWorkshops, currentUser, logout, isLoading } = useContext(AppContext) as AppContextType;
     const navigate = useNavigate();
 
     const workshop = useMemo(() => allWorkshops.find(ws => ws.id === workshopId), [allWorkshops, workshopId]);
 
     // Security check: ensure the current user is an authorized host for this workshop
     useEffect(() => {
-        if (!currentUser || currentUser.role !== 'host' || currentUser.workshopId !== workshopId) {
-            // If not authorized, clear any potential stale session and redirect to the host login page
-            logout();
-            navigate(`/host/workshop/${workshopId}/login`);
+        // Only run the check after the initial loading is complete.
+        if (!isLoading) {
+            if (!currentUser || currentUser.role !== 'host' || currentUser.workshopId !== workshopId) {
+                // If not authorized, clear any potential stale session and redirect to the host login page
+                logout();
+                navigate(`/host/workshop/${workshopId}/login`);
+            }
         }
-    }, [currentUser, workshopId, navigate, logout]);
+    }, [currentUser, workshopId, navigate, logout, isLoading]);
 
-    if (!workshop || !currentUser) {
+    if (isLoading || !workshop || !currentUser) {
         return <div className="p-10 text-center">Loading workshop details...</div>;
     }
     
