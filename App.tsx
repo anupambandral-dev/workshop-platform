@@ -106,7 +106,7 @@ const App: React.FC = () => {
             .from('workshops')
             .select(`
                 *,
-                hosts(employee_id),
+                hosts(employee_id, email),
                 participants(*, employees(*)),
                 sessions(*, session_participant_records(*))
             `)
@@ -128,7 +128,7 @@ const App: React.FC = () => {
                     return {
                         employee_id: host.employee_id,
                         name: employee?.name || 'Unknown Host',
-                        email: employee?.email || 'No email'
+                        email: host.email || employee?.email || 'No email'
                     };
                 }),
                 participants: (Array.isArray(ws.participants) ? ws.participants : []).map((p: any) => ({
@@ -211,7 +211,7 @@ const App: React.FC = () => {
         const { data: sessions, error: sessionsError } = await supabase.from('sessions').insert(sessionsToCreate).select();
         if (sessionsError || !sessions) throw new Error(sessionsError?.message || "Failed to create sessions.");
 
-        const hostsToCreate: Array<Database['public']['Tables']['hosts']['Insert']> = hosts.map(h => ({ workshop_id: workshop.id, employee_id: h.id }));
+        const hostsToCreate: Array<Database['public']['Tables']['hosts']['Insert']> = hosts.map(h => ({ workshop_id: workshop.id, employee_id: h.id, email: h.email }));
         const { error: hostsError } = await supabase.from('hosts').insert(hostsToCreate);
         if (hostsError) throw new Error(hostsError.message);
 
