@@ -161,8 +161,8 @@ const App: React.FC = () => {
                             id: p.id,
                             workshop_id: p.workshop_id,
                             employee_id: p.employee_id,
-                            name: 'Unknown Participant',
-                            email: 'No email'
+                            name: p.name || 'Unknown Participant', // Fallback
+                            email: p.email || 'No email' // Fallback
                         };
                     }
                     return {
@@ -290,7 +290,12 @@ const App: React.FC = () => {
             if (hostsError) throw new Error(hostsError.message);
 
             // 4. Add Participants
-            const participantsToCreate: Array<Database['public']['Tables']['participants']['Insert']> = participants.map(p => ({ workshop_id: workshop.id, employee_id: p.id }));
+            const participantsToCreate: Array<Database['public']['Tables']['participants']['Insert']> = participants.map(p => ({ 
+                workshop_id: workshop.id, 
+                employee_id: p.id,
+                name: p.name, // FIX: Include name
+                email: p.email // FIX: Include email
+            }));
             const { data: createdParticipants, error: participantsError } = await supabase.from('participants').insert(participantsToCreate).select();
             if (participantsError || !createdParticipants) throw new Error(participantsError.message);
             
