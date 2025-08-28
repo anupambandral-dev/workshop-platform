@@ -271,10 +271,12 @@ const App: React.FC = () => {
             
             let currentDate = new Date(firstSessionDate);
 
-            // Calculate end_time as start_time + 1 hour.
-            const tempDate = new Date(0);
-            tempDate.setUTCHours(startHours + 1, startMinutes, 0, 0);
-            const endTime = tempDate.toISOString().substring(11, 16);
+            // Calculate end_time reliably using math, avoiding Date object complexities
+            const startTimeInMinutes = startHours * 60 + startMinutes;
+            const endTimeInMinutes = startTimeInMinutes + 60; // Add 1 hour
+            const endHours = Math.floor(endTimeInMinutes / 60) % 24;
+            const endMinutes = endTimeInMinutes % 60;
+            const endTime = `${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}`;
 
             for (let i = 1; i <= workshopData.total_sessions; i++) {
                 // Format date string safely to avoid timezone issues from toISOString()
@@ -301,27 +303,33 @@ const App: React.FC = () => {
 
             // 3. Add Hosts
             const hostsToCreate: Array<Database['public']['Tables']['hosts']['Insert']> = hosts.map(h => ({ workshop_id: workshop.id, user_id: h.id }));
-            const { error: hostsError } = await supabase.from('hosts').insert(hostsToCreate);
-            if (hostsError) throw new Error(hostsError.message);
+            if (hostsToCreate.length > 0) {
+                const { error: hostsError } = await supabase.from('hosts').insert(hostsToCreate);
+                if (hostsError) throw new Error(hostsError.message);
+            }
 
             // 4. Add Participants
             const participantsToCreate: Array<Database['public']['Tables']['participants']['Insert']> = participants.map(p => ({ workshop_id: workshop.id, employee_id: p.id }));
             const { data: createdParticipants, error: participantsError } = await supabase.from('participants').insert(participantsToCreate).select();
-            if (participantsError || !createdParticipants) throw new Error(participantsError.message);
+            if (participantsError) throw new Error(participantsError.message);
             
             // 5. Create participant records for each session
-            const recordsToCreate: Array<Database['public']['Tables']['session_participant_records']['Insert']> = [];
-            for (const session of sessions) {
-                for (const participant of createdParticipants) {
-                    recordsToCreate.push({
-                        session_id: session.id,
-                        participant_id: participant.id,
-                        attendance: 'pending' as const
-                    });
+            if (createdParticipants && createdParticipants.length > 0) {
+                const recordsToCreate: Array<Database['public']['Tables']['session_participant_records']['Insert']> = [];
+                for (const session of sessions) {
+                    for (const participant of createdParticipants) {
+                        recordsToCreate.push({
+                            session_id: session.id,
+                            participant_id: participant.id,
+                            attendance: 'pending' as const
+                        });
+                    }
+                }
+                if (recordsToCreate.length > 0) {
+                    const { error: recordsError } = await supabase.from('session_participant_records').insert(recordsToCreate);
+                    if (recordsError) throw new Error(recordsError.message);
                 }
             }
-            const { error: recordsError } = await supabase.from('session_participant_records').insert(recordsToCreate);
-            if (recordsError) throw new Error(recordsError.message);
 
             await fetchWorkshops(user, employees);
             
