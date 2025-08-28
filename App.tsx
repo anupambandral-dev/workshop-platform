@@ -149,23 +149,18 @@ const App: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        // Set up the listener for authentication state changes.
-        // This is the single source of truth for the user's session state.
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             setIsLoading(true);
 
             if (session) {
-                // A user is logged in.
                 const user = session.user;
                 
-                // Fetch the employee's name to display it.
                 const { data: employee } = await supabase
                     .from('employees')
                     .select('name')
                     .eq('id', user.id)
                     .single();
 
-                // As requested, designate any logged-in user as a manager.
                 const role = 'manager'; 
 
                 const sessionUser: SessionUser = {
@@ -179,27 +174,19 @@ const App: React.FC = () => {
                 await fetchData(user.id, role);
 
             } else {
-                // A user has logged out or the session expired.
-                // This is the CRITICAL step to prevent the "incognito-only" login bug.
-                // We must clear all user-specific state to ensure the app is in a clean
-                // state for the next login attempt.
                 setUser(null);
                 setWorkshops([]);
                 setEmployees([]);
             }
 
-            // All auth-related fetching and state setting is complete.
             setIsLoading(false);
         });
 
-        // Clean up the subscription when the component unmounts.
         return () => subscription.unsubscribe();
-    }, [fetchData]); // Dependency on fetchData ensures the latest version is used.
+    }, [fetchData]);
 
 
     const logout = useCallback(async () => {
-        // The onAuthStateChange listener is the single source of truth for clearing state.
-        // This function just needs to trigger the sign-out process.
         const { error } = await supabase.auth.signOut();
         if (error) {
             console.error('Error logging out:', error);
@@ -219,7 +206,7 @@ const App: React.FC = () => {
             participants: participants.map(p => p.id),
         };
 
-        const { error } = await supabase.functions.invoke('create-workshop', {
+        const { data: newWorkshopRaw, error } = await supabase.functions.invoke('create-workshop', {
             body: payload,
         });
 
@@ -228,8 +215,33 @@ const App: React.FC = () => {
             throw new Error(`Failed to create workshop. ${error.message || 'Please check the function logs.'}`);
         }
 
-        await fetchData(user.id, user.role);
-    }, [user, fetchData]);
+        // Enrich the single new workshop returned from the function, eliminating the need to re-fetch.
+        // This is the key fix for the race condition.
+        const enrichedWorkshop: Workshop = {
+            ...(newWorkshopRaw as any),
+            hosts: ((newWorkshopRaw as any).hosts || []).map((h: { user_id: string }) => {
+                const employee = employees.find(e => e.id === h.user_id);
+                return { 
+                    user_id: h.user_id, 
+                    name: employee?.name || 'Unknown Host', 
+                    email: employee?.email || 'unknown@example.com' 
+                };
+            }),
+            participants: ((newWorkshopRaw as any).participants || []).map((p: { id: string; employee_id: string; }) => {
+                const employee = employees.find(e => e.id === p.employee_id);
+                return { 
+                    ...p, 
+                    name: employee?.name || 'Unknown Participant', 
+                    email: employee?.email || 'unknown@example.com' 
+                };
+            }),
+            sessions: ((newWorkshopRaw as any).sessions || []).sort((a: Session, b: Session) => a.session_number - b.session_number),
+        };
+    
+        // Prepend the new workshop to the existing list, triggering a single, safe re-render.
+        setWorkshops(prevWorkshops => [enrichedWorkshop, ...prevWorkshops]);
+
+    }, [user, employees]);
 
     const addEmployees = useCallback(async (newEmployees: { name: string; email: string }[]) => {
         const { error } = await supabase.functions.invoke('import-employees', {
@@ -241,6 +253,7 @@ const App: React.FC = () => {
             return { error: error.message || 'An unknown error occurred during import.' };
         }
 
+        // Re-fetch after import to get the latest complete list
         const { data: employeesData, error: employeesError } = await supabase.from('employees').select('*').order('name');
         if (employeesError) console.error("Failed to refetch employees", employeesError);
         else setEmployees((employeesData as Employee[]) || []);
@@ -285,6 +298,8 @@ const App: React.FC = () => {
             };
         }));
     }, []);
+
+
 
     const updateParticipantRecordInState = useCallback((updatedRecord: SessionParticipantRecord) => {
         setWorkshops(prevWorkshops => prevWorkshops.map(ws => ({
