@@ -102,17 +102,25 @@ const App: React.FC = () => {
             .from('workshops')
             .select(`
                 *,
-                hosts(user_id),
+                hosts(employee_id),
                 participants(*, employees(*)),
                 sessions(*, session_participant_records(*))
             `)
             .order('created_at', { ascending: false });
 
         if (currentUser.role === 'host') {
+             // Find the employee record corresponding to the logged-in user's email
+            const hostAsEmployee = allEmployees.find(emp => emp.email === currentUser.email);
+            if (!hostAsEmployee) {
+                setWorkshops([]);
+                setIsLoading(false);
+                return;
+            }
+
             const { data: hostEntries, error: hostError } = await supabase
                 .from('hosts')
                 .select('workshop_id')
-                .eq('user_id', currentUser.id);
+                .eq('employee_id', hostAsEmployee.id);
 
             if (hostError) {
                 console.error('Error fetching host workshops:', hostError);
@@ -140,9 +148,9 @@ const App: React.FC = () => {
              const enrichedWorkshops = data.map(ws => ({
                 ...ws,
                 hosts: (Array.isArray(ws.hosts) ? ws.hosts : []).map((host: any) => {
-                    const employee = allEmployees.find(emp => emp.id === host.user_id);
+                    const employee = allEmployees.find(emp => emp.id === host.employee_id);
                     return {
-                        user_id: host.user_id,
+                        employee_id: host.employee_id,
                         name: employee?.name || 'Unknown Host',
                         email: employee?.email || 'No email'
                     };
@@ -253,7 +261,16 @@ const App: React.FC = () => {
             // The function returns the newly created workshop object, fully formed.
             // Add it to the local state for an instant UI update.
             const newWorkshop = data as Workshop;
-            setWorkshops(currentWorkshops => [newWorkshop, ...currentWorkshops]);
+            
+            // Add the new workshop to state, ensuring all nested arrays are valid
+            const validatedWorkshop = {
+                ...newWorkshop,
+                hosts: Array.isArray(newWorkshop.hosts) ? newWorkshop.hosts : [],
+                participants: Array.isArray(newWorkshop.participants) ? newWorkshop.participants : [],
+                sessions: Array.isArray(newWorkshop.sessions) ? newWorkshop.sessions : [],
+            };
+
+            setWorkshops(currentWorkshops => [validatedWorkshop, ...currentWorkshops]);
 
         } catch (error) {
             console.error("Error in addWorkshop:", error);
