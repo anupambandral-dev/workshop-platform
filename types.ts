@@ -108,8 +108,8 @@ export interface AppContextType {
   logout: () => Promise<void>;
   addWorkshop: (
     workshopData: { title: string; total_sessions: number; weekday: string; time: string },
-    hosts: Employee[], 
-    participants: Employee[]
+    hostEmails: string, 
+    participantEmails: string
   ) => Promise<void>;
   addEmployees: (newEmployees: { name: string; email: string }[]) => Promise<{
     error: string | null;
