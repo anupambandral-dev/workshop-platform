@@ -114,9 +114,10 @@ const CreateWorkshopModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
         try {
             await addWorkshop(workshopData, selectedHosts, selectedParticipants);
             onClose();
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            alert("Failed to create workshop.");
+            // This is the critical change: show the detailed server error.
+            alert(`Failed to create workshop. Server said: ${error.message}`);
         } finally {
             setIsCreating(false);
         }
@@ -285,10 +286,18 @@ const DashboardPage: React.FC = () => {
 
     const { currentAndUpcoming, previous } = useMemo(() => {
         const sortedWorkshops = [...workshops].sort((a, b) => {
-            const dateA = new Date(a.sessions[0]?.date || 0).getTime();
-            const dateB = new Date(b.sessions[0]?.date || 0).getTime();
-            return dateB - dateA;
+            const getSortDate = (ws: Workshop) => {
+                const firstSessionDate = ws.sessions?.[0]?.date;
+                // Use the first session date if available, otherwise fall back to the workshop's creation date.
+                const dateToSortBy = firstSessionDate || ws.created_at;
+                const time = new Date(dateToSortBy).getTime();
+                return isNaN(time) ? 0 : time;
+            };
+            const timeA = getSortDate(a);
+            const timeB = getSortDate(b);
+            return timeB - timeA; // Sort descending (newest first)
         });
+        
         return {
             currentAndUpcoming: sortedWorkshops.filter(ws => ws.sessions.some(s => s.status !== 'ended')),
             previous: sortedWorkshops.filter(ws => ws.sessions.every(s => s.status === 'ended'))
