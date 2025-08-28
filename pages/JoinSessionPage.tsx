@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
 import type { Workshop, AppContextType, Session, Participant, SessionWithRecords, SessionParticipantRecord } from '../types';
@@ -17,12 +17,6 @@ const JoinSessionPage: React.FC = () => {
     // State to manage the participant's view
     const [view, setView] = useState<'email_input' | 'status_view'>('email_input');
     const [identifiedParticipant, setIdentifiedParticipant] = useState<{ workshop: Workshop, session: SessionWithRecords, participant: Participant, record: SessionParticipantRecord } | null>(null);
-    
-    // Use a ref to hold the latest participant data to avoid stale state in the subscription callback
-    const participantRef = useRef(identifiedParticipant);
-    useEffect(() => {
-        participantRef.current = identifiedParticipant;
-    }, [identifiedParticipant]);
 
     const { workshop, session } = useMemo(() => {
         if (!sessionId || allWorkshops.length === 0) {
@@ -62,14 +56,18 @@ const JoinSessionPage: React.FC = () => {
                 if ((payload.new as Session).status === 'live') {
                     // Host has started the session, update attendance and redirect participant
                     const updateAttendanceAndNavigate = async () => {
-                        // Use the ref here to get the LATEST participant data
-                        if (!participantRef.current) return;
+                        const waitingInfoRaw = sessionStorage.getItem('waiting_participant_info');
+                        if (!waitingInfoRaw) return;
+                        
+                        const waitingInfo = JSON.parse(waitingInfoRaw);
+                        // Ensure this subscription is for the user on this page
+                        if (waitingInfo.sessionId !== session.id) return;
 
                         // Securely mark attendance via Edge Function
                         const { error } = await supabase.functions.invoke('mark-attendance', {
                             body: {
                                 sessionId: session.id,
-                                email: participantRef.current.participant.email,
+                                email: waitingInfo.email,
                             },
                         });
                         
@@ -78,13 +76,14 @@ const JoinSessionPage: React.FC = () => {
                             // Proceed to join even if it fails, to not block the user
                         }
 
-                        // Now set storage and navigate
+                        // Now set storage for the live page and navigate
                         sessionStorage.setItem('workshop_session_user', JSON.stringify({
-                            id: participantRef.current.participant.id,
-                            name: participantRef.current.participant.name,
-                            email: participantRef.current.participant.email,
+                            id: waitingInfo.id,
+                            name: waitingInfo.name,
+                            email: waitingInfo.email,
                             role: 'participant',
                         }));
+                        sessionStorage.removeItem('waiting_participant_info');
                         navigate(`/session/${sessionId}/live`);
                     };
                     updateAttendanceAndNavigate();
@@ -131,7 +130,13 @@ const JoinSessionPage: React.FC = () => {
                 }));
                 navigate(`/session/${sessionId}/live`);
             } else {
-                // Otherwise, show the status view (ended, scheduled)
+                // If scheduled, store info for the listener and show the waiting view
+                sessionStorage.setItem('waiting_participant_info', JSON.stringify({
+                    sessionId: session.id,
+                    email: participant.email,
+                    id: participant.id,
+                    name: participant.name,
+                }));
                 setView('status_view');
             }
         } else {
