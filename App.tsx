@@ -144,33 +144,44 @@ const App: React.FC = () => {
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             setIsLoading(true);
             if (session) {
-                const currentUser = session.user;
+                // Explicitly fetch the user to ensure app_metadata is up-to-date.
+                const { data: { user: freshUser }, error: getUserError } = await supabase.auth.getUser();
 
-                if (currentUser) {
-                    const { data: employee, error } = await supabase
+                if (getUserError) {
+                    console.error("Error fetching user data:", getUserError);
+                    setUser(null);
+                    setWorkshops([]);
+                    setEmployees([]);
+                } else if (freshUser) {
+                    const { data: employee, error: employeeError } = await supabase
                         .from('employees')
                         .select('name')
-                        .eq('id', currentUser.id)
+                        .eq('id', freshUser.id)
                         .single();
                     
-                    if (error) console.error("Error fetching user's name:", error);
+                    if (employeeError) console.error("Error fetching user's name:", employeeError);
 
-                    const role = currentUser.app_metadata?.role || 'participant';
+                    const role = freshUser.app_metadata?.role || 'participant';
                     const sessionUser: SessionUser = {
-                        id: currentUser.id,
-                        email: currentUser.email!,
-                        name: employee?.name || currentUser.email!,
+                        id: freshUser.id,
+                        email: freshUser.email!,
+                        name: employee?.name || freshUser.email!,
                         role: role as 'manager' | 'host' | 'participant',
                     };
                     setUser(sessionUser);
-                    await fetchData(currentUser.id, role);
+                    await fetchData(freshUser.id, role);
                 } else {
+                    // This case is unlikely if a session exists, but is a safe fallback.
                     setUser(null);
                     setWorkshops([]);
+                    setEmployees([]);
                 }
             } else {
+                // If there's no session, ensure all user-related state is cleared.
+                // This is crucial for fixing the incognito/caching bug.
                 setUser(null);
                 setWorkshops([]);
+                setEmployees([]);
             }
             setIsLoading(false);
         });
@@ -179,9 +190,12 @@ const App: React.FC = () => {
     }, [fetchData]);
 
     const logout = useCallback(async () => {
-        await supabase.auth.signOut();
-        setUser(null);
-        setWorkshops([]);
+        // The onAuthStateChange listener is the single source of truth for clearing state.
+        // This function just needs to trigger the sign-out process.
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+            console.error('Error logging out:', error);
+        }
     }, []);
 
     const addWorkshop = useCallback(async (
