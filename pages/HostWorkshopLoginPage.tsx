@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
-import { AppContextType } from '../types';
+import { AppContextType, CurrentUser } from '../types';
 import { LogoIcon } from '../components/Icons';
 
 const HostWorkshopLoginPage: React.FC = () => {
@@ -32,14 +32,15 @@ const HostWorkshopLoginPage: React.FC = () => {
         const host = workshop.hosts.find(h => h.email?.toLowerCase() === email.toLowerCase());
 
         if (host) {
-            // Success! Create temporary session for the host
-            setCurrentUser({
+            const hostSession: CurrentUser = {
                 id: host.employee_id,
                 name: host.name || 'Host',
                 email: host.email || email,
                 role: 'host' as const,
-                workshopId: workshop.id, // Scope the session to this workshop
-            });
+                workshopId: workshop.id,
+            };
+            sessionStorage.setItem('host_session', JSON.stringify(hostSession));
+            setCurrentUser(hostSession);
             navigate(`/host/workshop/${workshop.id}/dashboard`);
         } else {
             setError("This email is not registered as a host for this workshop.");
