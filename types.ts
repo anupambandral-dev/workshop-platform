@@ -165,9 +165,22 @@ export type Database = {
           id: string;
           workshop_id: string;
           employee_id: string;
+          name: string;
+          email: string;
         };
-        Insert: { workshop_id: string; employee_id: string; };
-        Update: Partial<{ id: string; workshop_id: string; employee_id: string; }>;
+        Insert: { 
+            workshop_id: string; 
+            employee_id: string; 
+            name: string; 
+            email: string; 
+        };
+        Update: Partial<{ 
+            id: string; 
+            workshop_id: string; 
+            employee_id: string;
+            name: string;
+            email: string;
+        }>;
         Relationships: [];
       };
       session_participant_records: {
