@@ -241,28 +241,25 @@ const App: React.FC = () => {
         setEmployees([]);
     }, []);
     
-    const addWorkshop = useCallback(async (workshopData: { title: string; total_sessions: number; weekday: string; time: string }, hosts: Employee[], participants: Employee[]) => {
+    const addWorkshop = useCallback(async (
+        workshopData: { title: string; total_sessions: number; weekday: string; time: string }, 
+        hostEmails: string, 
+        participantEmails: string
+    ) => {
         if (!user) throw new Error("User must be logged in to create a workshop.");
 
         try {
-            const hostIds = hosts.map(h => h.id);
-            const participantIds = participants.map(p => p.id);
-
             const { data, error } = await supabase.functions.invoke('create-workshop', {
-                body: { workshopData, hostIds, participantIds },
+                body: { workshopData, hostEmails, participantEmails },
             });
 
             if (error) {
-                // The error from the function could be a string or an object
                 const errorMessage = typeof error === 'object' ? error.message : String(error);
                 throw new Error(`Failed to create workshop: ${errorMessage}`);
             }
 
-            // The function returns the newly created workshop object, fully formed.
-            // Add it to the local state for an instant UI update.
             const newWorkshop = data as Workshop;
             
-            // Add the new workshop to state, ensuring all nested arrays are valid
             const validatedWorkshop = {
                 ...newWorkshop,
                 hosts: Array.isArray(newWorkshop.hosts) ? newWorkshop.hosts : [],
