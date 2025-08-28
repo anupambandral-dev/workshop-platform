@@ -13,19 +13,14 @@ const HostWorkshopDashboardPage: React.FC = () => {
 
     // Security check: ensure the current user is an authorized host for this workshop
     useEffect(() => {
-        // Only run the check after the initial loading is complete.
-        if (isLoading) {
-            return; // Wait for user state to be determined
-        }
-
-        // If loading is finished and the user is not an authorized host, redirect.
-        if (!currentUser || currentUser.role !== 'host' || currentUser.workshopId !== workshopId) {
-            // No need to call logout(), just redirect. This prevents an infinite loop.
-            navigate(`/host/workshop/${workshopId}/login`);
+        // After initial load, if there's no user or the user is not the correct host, redirect.
+        // This prevents the infinite loop that was causing the page to freeze.
+        if (!isLoading && (!currentUser || currentUser.role !== 'host' || currentUser.workshopId !== workshopId)) {
+            navigate(`/host/workshop/${workshopId}/login`, { replace: true });
         }
     }, [currentUser, workshopId, navigate, isLoading]);
 
-    if (isLoading || !workshop || !currentUser) {
+    if (isLoading || !currentUser || !workshop) {
         return <div className="p-10 text-center">Verifying access and loading workshop details...</div>;
     }
     
