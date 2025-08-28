@@ -79,13 +79,17 @@ serve(async (req: Request) => {
         currentDate.setDate(currentDate.getDate() + 1);
     }
     for (let i = 1; i <= workshopData.total_sessions; i++) {
+        const [hours, minutes] = workshopData.time.split(':').map(Number);
+        const endHours = hours + 1;
+        const endTime = `${String(endHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+
         sessionsToCreate.push({
             workshop_id: workshop.id,
             session_number: i,
             title: `Session ${i}`,
             date: currentDate.toISOString().split('T')[0],
             start_time: workshopData.time,
-            end_time: workshopData.time, // You might want to adjust this logic
+            end_time: endTime,
             status: 'scheduled',
         });
         currentDate.setDate(currentDate.getDate() + 7); // Move to the same day next week
@@ -93,10 +97,14 @@ serve(async (req: Request) => {
     const { data: sessions, error: sessionsError } = await supabaseAdmin.from('sessions').insert(sessionsToCreate).select();
     if (sessionsError) throw sessionsError;
 
-    // Step 3: Add Hosts
-    const hostsToCreate = hostIds.map(id => ({ workshop_id: workshop.id, user_id: id }));
+    // Step 3: Add Hosts directly using their Employee IDs.
+    // This now correctly uses the 'employee_id' column after the database fix.
+    const hostsToCreate = hostIds.map(employeeId => ({ workshop_id: workshop.id, employee_id: employeeId }));
     const { error: hostsError } = await supabaseAdmin.from('hosts').insert(hostsToCreate);
-    if (hostsError) throw hostsError;
+    if (hostsError) {
+        console.error('Error inserting hosts:', hostsError.message);
+        throw new Error(`Database error: Failed to link hosts to workshop. This confirms a schema mismatch. Please ensure you have run the provided SQL fix. Details: ${hostsError.message}`);
+    }
     
     // Step 4: Add Participants
     const participantsToCreate = participantIds.map(id => ({ workshop_id: workshop.id, employee_id: id }));
@@ -124,7 +132,7 @@ serve(async (req: Request) => {
         .from('workshops')
         .select(`
             *,
-            hosts(user_id, employees(name, email)),
+            hosts(employee_id),
             participants(*, employees(*)),
             sessions(*, session_participant_records(*))
         `)
@@ -132,13 +140,23 @@ serve(async (req: Request) => {
         .single();
         
     if (finalError) throw finalError;
+    
+    // 7. Manually enrich hosts with employee data
+    const { data: hostEmployees, error: hostEmployeesError } = await supabaseAdmin
+        .from('employees')
+        .select('id, name, email')
+        .in('id', hostIds);
 
-    // Enrich host data to match client-side structure
-    const enrichedHosts = (finalWorkshop.hosts as any[]).map(h => ({
-        user_id: h.user_id,
-        name: h.employees?.name || 'Unknown Host',
-        email: h.employees?.email || 'No email',
-    }));
+    if (hostEmployeesError) throw hostEmployeesError;
+
+    const enrichedHosts = (finalWorkshop.hosts as any[]).map(h => {
+        const employeeData = hostEmployees.find(emp => emp.id === h.employee_id);
+        return {
+            employee_id: h.employee_id,
+            name: employeeData?.name || 'Unknown Host',
+            email: employeeData?.email || 'No email',
+        };
+    });
     
     const enrichedParticipants = (finalWorkshop.participants as any[]).map(p => ({
         id: p.id,
