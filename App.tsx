@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect, createContext } from 'react';
 import { HashRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { supabase } from './services/supabase';
-import type { AppContextType, Workshop, SessionUser, SessionWithRecords, Employee, SessionParticipantRecord, Host, Database } from './types';
+import type { AppContextType, Workshop, SessionUser, SessionWithRecords, Employee, SessionParticipantRecord, Session } from './types';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import JoinSessionPage from './pages/JoinSessionPage';
@@ -90,351 +90,187 @@ const App: React.FC = () => {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    const fetchWorkshops = useCallback(async (currentUser: SessionUser | null, allEmployees: Employee[]) => {
+    const fetchData = useCallback(async (currentUserId: string, currentUserRole: string) => {
         setIsLoading(true);
-        if (!currentUser) {
-            setWorkshops([]);
-            setIsLoading(false);
-            return;
+
+        const { data: employeesData, error: employeesError } = await supabase
+            .from('employees')
+            .select('*')
+            .order('name');
+        if (employeesError) console.error('Error fetching employees:', employeesError);
+        const allEmployees = (employeesData as Employee[]) || [];
+        setEmployees(allEmployees);
+
+        let workshopQuery = supabase.from('workshops').select(`
+            *,
+            hosts ( user_id ),
+            participants ( id, employee_id ),
+            sessions ( *, session_participant_records ( * ) )
+        `).order('created_at', { ascending: false });
+
+        if (currentUserRole === 'host') {
+            workshopQuery = workshopQuery.filter('hosts.user_id', 'cs', `{${currentUserId}}`);
+        } else if (currentUserRole === 'participant') {
+             workshopQuery = workshopQuery.filter('participants.employee_id', 'eq', currentUserId);
         }
-
-        let query = supabase
-            .from('workshops')
-            .select(`
-                *,
-                hosts(user_id),
-                participants(*, employees(*)),
-                sessions(*, session_participant_records(*))
-            `)
-            .order('created_at', { ascending: false });
-
-        if (currentUser.role === 'host') {
-            const { data: hostEntries, error: hostError } = await supabase
-                .from('hosts')
-                .select('workshop_id')
-                .eq('user_id', currentUser.id);
-
-            if (hostError) {
-                console.error('Error fetching host workshops:', hostError);
-                setWorkshops([]);
-                setIsLoading(false);
-                return;
-            }
-            
-            const workshopIds = hostEntries.map(h => h.workshop_id);
-            if (workshopIds.length === 0) {
-                setWorkshops([]);
-                setIsLoading(false);
-                return;
-            }
-
-            query = query.in('id', workshopIds);
-        }
-
-        const { data, error } = await query;
+        
+        const { data, error } = await workshopQuery;
 
         if (error) {
             console.error('Error fetching workshops:', error);
             setWorkshops([]);
-        } else if (data) {
-             const enrichedWorkshops = data.map(ws => ({
+        } else {
+             const enrichedWorkshops = data.map((ws: any) => ({
                 ...ws,
-                hosts: Array.isArray(ws.hosts) ? (ws.hosts as any[]).map(host => {
-                    const employee = allEmployees.find(emp => emp.id === host.user_id);
-                    return {
-                        user_id: host.user_id,
-                        name: employee?.name || 'Unknown Host',
-                        email: employee?.email || 'No email'
-                    };
-                }) : [],
-                participants: Array.isArray(ws.participants) ? (ws.participants as any[]).map(p => {
-                    if (!p.employees) {
-                        return {
-                            id: p.id,
-                            workshop_id: p.workshop_id,
-                            employee_id: p.employee_id,
-                            name: 'Unknown Participant',
-                            email: 'No email'
-                        };
-                    }
-                    return {
-                        id: p.id,
-                        workshop_id: p.workshop_id,
-                        employee_id: p.employees.id,
-                        name: p.employees.name,
-                        email: p.employees.email,
-                    }
-                }) : [],
+                hosts: ws.hosts.map((h: { user_id: string }) => {
+                    const employee = allEmployees.find(e => e.id === h.user_id);
+                    return { user_id: h.user_id, name: employee?.name, email: employee?.email };
+                }),
+                participants: ws.participants.map((p: { id: string; employee_id: string; }) => {
+                    const employee = allEmployees.find(e => e.id === p.employee_id);
+                    return { ...p, name: employee?.name, email: employee?.email };
+                }),
+                sessions: ws.sessions.sort((a: Session, b: Session) => a.session_number - b.session_number),
             }));
-            setWorkshops(enrichedWorkshops as unknown as Workshop[]);
-        } else {
-             setWorkshops([]);
+            setWorkshops(enrichedWorkshops);
         }
+
         setIsLoading(false);
     }, []);
-
-    const fetchEmployees = useCallback(async () => {
-        const { data, error } = await supabase.from('employees').select('*').order('created_at', { ascending: false });
-        if (error) {
-            console.error('Error fetching employees:', error);
-            setEmployees([]);
-            return [];
-        } else {
-            const employeeData = data || [];
-            setEmployees(employeeData);
-            return employeeData;
-        }
-    }, []);
-    
-    const setupUserSession = useCallback(async (session: any | null) => {
-        if (session?.user) {
-            const roleFromMetadata = session.user.user_metadata?.role;
-            const userRole = (roleFromMetadata === 'manager' || roleFromMetadata === 'host') ? roleFromMetadata : 'manager';
-
-            const currentUser: SessionUser = {
-                id: session.user.id,
-                name: session.user.email?.split('@')[0] || 'User',
-                email: session.user.email!,
-                role: userRole,
-            };
-            setUser(currentUser);
-            const allEmployees = await fetchEmployees();
-            await fetchWorkshops(currentUser, allEmployees);
-        } else {
-            setUser(null);
-            await fetchEmployees();
-            setWorkshops([]);
-        }
-        setIsLoading(false);
-    }, [fetchWorkshops, fetchEmployees]);
-
 
     useEffect(() => {
-        setIsLoading(true);
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setupUserSession(session);
-        });
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            setIsLoading(true);
+            const currentUser = session?.user;
+            if (currentUser) {
+                const { data: employee, error } = await supabase
+                    .from('employees')
+                    .select('name')
+                    .eq('id', currentUser.id)
+                    .single();
+                
+                if (error) console.error("Error fetching user's name:", error);
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setupUserSession(session);
+                const role = session?.user.app_metadata.role || 'participant';
+                const sessionUser: SessionUser = {
+                    id: currentUser.id,
+                    email: currentUser.email!,
+                    name: employee?.name || currentUser.email!,
+                    role: role,
+                };
+                setUser(sessionUser);
+                await fetchData(currentUser.id, role);
+
+            } else {
+                setUser(null);
+                setWorkshops([]);
+            }
+            setIsLoading(false);
         });
 
         return () => subscription.unsubscribe();
-    }, [setupUserSession]);
+    }, [fetchData]);
 
     const logout = useCallback(async () => {
         await supabase.auth.signOut();
         setUser(null);
         setWorkshops([]);
-        setEmployees([]);
     }, []);
-    
-    const addWorkshop = useCallback(async (workshopData: { title: string; total_sessions: number; weekday: string; time: string }, hosts: Employee[], participants: Employee[]) => {
+
+    const addWorkshop = useCallback(async (
+        workshopData: { title: string; total_sessions: number; weekday: string; time: string },
+        hosts: Employee[],
+        participants: Employee[]
+    ) => {
         if (!user) throw new Error("User must be logged in to create a workshop.");
 
-        try {
-            // 1. Create the workshop
-            const { data: workshop, error: workshopError } = await supabase
-                .from('workshops')
-                .insert({ title: workshopData.title, manager_id: user.id })
-                .select()
-                .single();
+        const payload = {
+            ...workshopData,
+            hosts: hosts.map(h => h.id),
+            participants: participants.map(p => p.id),
+        };
 
-            if (workshopError || !workshop) throw new Error(workshopError?.message || "Failed to create workshop.");
+        const { error } = await supabase.functions.invoke('create-workshop', {
+            body: payload,
+        });
 
-            // 2. Generate Sessions
-            const sessionsToCreate: Array<Database['public']['Tables']['sessions']['Insert']> = [];
-            
-            // --- Robust Date Calculation Logic ---
-            let firstSessionDate = new Date();
-            firstSessionDate.setHours(0, 0, 0, 0); // Normalize to midnight to prevent time-of-day issues
-
-            const targetWeekday = parseInt(workshopData.weekday, 10);
-            const currentWeekday = firstSessionDate.getDay();
-            const [startHours, startMinutes] = workshopData.time.split(':').map(Number);
-
-            let daysUntilTarget = targetWeekday - currentWeekday;
-
-            // If the target day already passed this week, schedule for next week.
-            if (daysUntilTarget < 0) {
-                daysUntilTarget += 7;
-            } 
-            // If the target day is today, check if the start time has already passed.
-            else if (daysUntilTarget === 0) {
-                const now = new Date();
-                if (now.getHours() > startHours || (now.getHours() === startHours && now.getMinutes() > startMinutes)) {
-                    // Time has passed for today, so schedule for the same day next week.
-                    daysUntilTarget += 7;
-                }
-            }
-            firstSessionDate.setDate(firstSessionDate.getDate() + daysUntilTarget);
-            
-            let currentDate = new Date(firstSessionDate);
-
-            // Calculate end_time reliably using math, avoiding Date object complexities
-            const startTimeInMinutes = startHours * 60 + startMinutes;
-            const endTimeInMinutes = startTimeInMinutes + 60; // Add 1 hour
-            const endHours = Math.floor(endTimeInMinutes / 60) % 24;
-            const endMinutes = endTimeInMinutes % 60;
-            const endTime = `${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}`;
-
-            for (let i = 1; i <= workshopData.total_sessions; i++) {
-                // Format date string safely to avoid timezone issues from toISOString()
-                const year = currentDate.getFullYear();
-                const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-                const day = String(currentDate.getDate()).padStart(2, '0');
-                const sessionDate = `${year}-${month}-${day}`;
-                
-                sessionsToCreate.push({
-                    workshop_id: workshop.id,
-                    session_number: i,
-                    title: `Session ${i}`,
-                    date: sessionDate,
-                    start_time: workshopData.time,
-                    end_time: endTime,
-                    status: 'scheduled' as const,
-                });
-                // Advance to the same day next week
-                currentDate.setDate(currentDate.getDate() + 7);
-            }
-
-            const { data: sessions, error: sessionsError } = await supabase.from('sessions').insert(sessionsToCreate).select();
-            if (sessionsError || !sessions) throw new Error(sessionsError?.message || "Failed to create sessions.");
-
-            // 3. Add Hosts
-            const hostsToCreate: Array<Database['public']['Tables']['hosts']['Insert']> = hosts.map(h => ({ workshop_id: workshop.id, user_id: h.id }));
-            if (hostsToCreate.length > 0) {
-                const { error: hostsError } = await supabase.from('hosts').insert(hostsToCreate);
-                if (hostsError) throw new Error(hostsError.message);
-            }
-
-            // 4. Add Participants
-            const participantsToCreate: Array<Database['public']['Tables']['participants']['Insert']> = participants.map(p => ({ workshop_id: workshop.id, employee_id: p.id }));
-            const { data: createdParticipants, error: participantsError } = await supabase.from('participants').insert(participantsToCreate).select();
-            if (participantsError) throw new Error(participantsError.message);
-            
-            // 5. Create participant records for each session
-            if (createdParticipants && createdParticipants.length > 0) {
-                const recordsToCreate: Array<Database['public']['Tables']['session_participant_records']['Insert']> = [];
-                for (const session of sessions) {
-                    for (const participant of createdParticipants) {
-                        recordsToCreate.push({
-                            session_id: session.id,
-                            participant_id: participant.id,
-                            attendance: 'pending' as const
-                        });
-                    }
-                }
-                if (recordsToCreate.length > 0) {
-                    const { error: recordsError } = await supabase.from('session_participant_records').insert(recordsToCreate);
-                    if (recordsError) throw new Error(recordsError.message);
-                }
-            }
-
-            await fetchWorkshops(user, employees);
-            
-        } catch (error) {
-            console.error("Error in addWorkshop:", error);
-            throw error;
+        if (error) {
+            console.error('Error invoking create-workshop function:', error);
+            throw new Error(`Failed to create workshop. ${error.message || 'Please check the function logs.'}`);
         }
-    }, [user, employees, fetchWorkshops]);
-    
+
+        await fetchData(user.id, user.role);
+    }, [user, fetchData]);
+
     const addEmployees = useCallback(async (newEmployees: { name: string; email: string }[]) => {
-        setIsLoading(true);
-        try {
-            if (newEmployees.length === 0) {
-                return { error: null };
-            }
+        const { error } = await supabase.functions.invoke('import-employees', {
+            body: { users: newEmployees },
+        });
 
-            // NEW MECHANISM: Invoke a Supabase Edge Function to handle the import.
-            // This is more robust and bypasses RLS issues for the client.
-            const { error: functionError } = await supabase.functions.invoke('import-employees', {
-                body: { users: newEmployees },
-            });
-
-            if (functionError) {
-                // This error could be from the function invocation itself (e.g., network, 404)
-                // or a custom error returned from the function's logic.
-                throw functionError;
-            }
-
-            // If the function call succeeds, the data is in the DB. Refresh the client state.
-            await fetchEmployees();
-
-            return { error: null }; // Return success
-
-        } catch (err: any) {
-            console.error("Error invoking import-employees function:", err);
-            // Provide a clearer, more actionable error message.
-            let errorMessage = `Import failed: ${err.message || 'An unknown error occurred.'}`;
-            if (err.message.includes('Function not found')) {
-                errorMessage += ' Please ensure the "import-employees" Edge Function is deployed correctly in your Supabase project.';
-            } else if (err.message.includes('environment variables') || err.message.includes('Missing')) {
-                errorMessage += ' The Edge Function may be missing required environment variables (like SUPABASE_SERVICE_ROLE_KEY). Please check your function configuration in the Supabase dashboard.';
-            } else {
-                 errorMessage += ' This may be due to a database permissions issue or the Edge Function not being deployed correctly.';
-            }
-            return { error: errorMessage };
-        } finally {
-            setIsLoading(false);
+        if (error) {
+            console.error('Error invoking import-employees function:', error);
+            return { error: error.message || 'An unknown error occurred during import.' };
         }
-    }, [fetchEmployees]);
 
-    const updateSessionInState = useCallback((updatedSession: SessionWithRecords) => {
-        setWorkshops(prev => prev.map(ws => {
-            if (ws.id === updatedSession.workshop_id) {
-                return {
-                    ...ws,
-                    sessions: ws.sessions.map(s => s.id === updatedSession.id ? updatedSession : s)
-                };
-            }
-            return ws;
-        }));
+        const { data: employeesData, error: employeesError } = await supabase.from('employees').select('*').order('name');
+        if (employeesError) console.error("Failed to refetch employees", employeesError);
+        else setEmployees((employeesData as Employee[]) || []);
+
+        return { error: null };
     }, []);
-
-    const updateSession = useCallback(async (session: SessionWithRecords) => {
-        const { session_participant_records, ...sessionData } = session;
-        const { id: sessionId, ...sessionUpdateData } = sessionData;
-
-        const { error } = await supabase.from('sessions').update(sessionUpdateData).eq('id', sessionId);
-        if (error) throw error;
-
-        for (const record of session_participant_records) {
-             const { id: recordId, ...recordUpdateData } = record;
-            const { error: recordError } = await supabase.from('session_participant_records').update(recordUpdateData).eq('id', recordId);
-            if (recordError) throw recordError;
-        }
-        updateSessionInState(session);
-    }, [updateSessionInState]);
 
     const deleteWorkshop = useCallback(async (workshopId: string) => {
         const { error } = await supabase.from('workshops').delete().eq('id', workshopId);
         if (error) throw error;
         setWorkshops(prev => prev.filter(ws => ws.id !== workshopId));
     }, []);
-    
-    const updateParticipantRecordInState = useCallback((updatedRecord: SessionParticipantRecord) => {
-         setWorkshops(prev => prev.map(ws => {
-            const sessionToUpdate = ws.sessions.find(s => s.id === updatedRecord.session_id);
-            if (sessionToUpdate) {
-                return {
-                    ...ws,
-                    sessions: ws.sessions.map(s => {
-                        if (s.id === updatedRecord.session_id) {
-                            return {
-                                ...s,
-                                session_participant_records: s.session_participant_records.map(r => r.id === updatedRecord.id ? updatedRecord : r)
-                            };
-                        }
-                        return s;
-                    })
-                };
+
+    const updateSession = useCallback(async (session: SessionWithRecords) => {
+        const { id, host_reflection, status, title, date, start_time, end_time, session_participant_records } = session;
+        
+        const { error } = await supabase.from('sessions').update({ host_reflection, status, title, date, start_time, end_time }).eq('id', id);
+        if (error) throw error;
+        
+        if (session_participant_records) {
+            for (const record of session_participant_records) {
+                const { error: recordError } = await supabase
+                    .from('session_participant_records')
+                    .update({ attendance: record.attendance })
+                    .eq('id', record.id);
+                if (recordError) console.error("Failed to update record:", recordError);
             }
-            return ws;
+        }
+        
+        setWorkshops(prevWorkshops => prevWorkshops.map(ws => ({
+            ...ws,
+            sessions: ws.sessions.map(s => s.id === id ? session : s)
+        })));
+    }, []);
+
+    const updateSessionInState = useCallback((updatedSession: SessionWithRecords) => {
+        setWorkshops(prevWorkshops => prevWorkshops.map(ws => {
+            if (ws.id !== updatedSession.workshop_id) return ws;
+            return {
+                ...ws,
+                sessions: ws.sessions.map(s => s.id === updatedSession.id ? updatedSession : s),
+            };
         }));
     }, []);
 
-    const value = useMemo(() => ({
+    const updateParticipantRecordInState = useCallback((updatedRecord: SessionParticipantRecord) => {
+        setWorkshops(prevWorkshops => prevWorkshops.map(ws => ({
+            ...ws,
+            sessions: ws.sessions.map(s => {
+                if (s.id !== updatedRecord.session_id) return s;
+                return {
+                    ...s,
+                    session_participant_records: s.session_participant_records.map(r => r.id === updatedRecord.id ? updatedRecord : r)
+                };
+            })
+        })));
+    }, []);
+
+    const appContextValue = useMemo(() => ({
         user,
         workshops,
         employees,
@@ -445,11 +281,11 @@ const App: React.FC = () => {
         updateSession,
         deleteWorkshop,
         updateSessionInState,
-        updateParticipantRecordInState
+        updateParticipantRecordInState,
     }), [user, workshops, employees, isLoading, logout, addWorkshop, addEmployees, updateSession, deleteWorkshop, updateSessionInState, updateParticipantRecordInState]);
 
     return (
-        <AppContext.Provider value={value}>
+        <AppContext.Provider value={appContextValue}>
             <HashRouter>
                 <AppContent />
             </HashRouter>
