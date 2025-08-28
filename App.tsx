@@ -106,15 +106,17 @@ const App: React.FC = () => {
             hosts ( user_id ),
             participants ( id, employee_id ),
             sessions ( *, session_participant_records ( * ) )
-        `).order('created_at', { ascending: false });
+        `);
 
-        if (currentUserRole === 'host') {
+        if (currentUserRole === 'manager') {
+            workshopQuery = workshopQuery.eq('manager_id', currentUserId);
+        } else if (currentUserRole === 'host') {
             workshopQuery = workshopQuery.filter('hosts.user_id', 'cs', `{${currentUserId}}`);
         } else if (currentUserRole === 'participant') {
              workshopQuery = workshopQuery.filter('participants.employee_id', 'eq', currentUserId);
         }
         
-        const { data, error } = await workshopQuery;
+        const { data, error } = await workshopQuery.order('created_at', { ascending: false });
 
         if (error) {
             console.error('Error fetching workshops:', error);
