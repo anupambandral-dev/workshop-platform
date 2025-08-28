@@ -126,11 +126,19 @@ const App: React.FC = () => {
                 ...ws,
                 hosts: (ws.hosts || []).map((h: { user_id: string }) => {
                     const employee = allEmployees.find(e => e.id === h.user_id);
-                    return { user_id: h.user_id, name: employee?.name, email: employee?.email };
+                    return { 
+                        user_id: h.user_id, 
+                        name: employee?.name || 'Unknown Host', 
+                        email: employee?.email || 'unknown@example.com' 
+                    };
                 }),
                 participants: (ws.participants || []).map((p: { id: string; employee_id: string; }) => {
                     const employee = allEmployees.find(e => e.id === p.employee_id);
-                    return { ...p, name: employee?.name, email: employee?.email };
+                    return { 
+                        ...p, 
+                        name: employee?.name || 'Unknown Participant', 
+                        email: employee?.email || 'unknown@example.com' 
+                    };
                 }),
                 sessions: (ws.sessions || []).sort((a: Session, b: Session) => a.session_number - b.session_number),
             }));
