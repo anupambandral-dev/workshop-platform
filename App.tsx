@@ -244,30 +244,55 @@ const App: React.FC = () => {
 
             // 2. Generate Sessions
             const sessionsToCreate: Array<Database['public']['Tables']['sessions']['Insert']> = [];
-            let currentDate = new Date();
-            const targetWeekday = parseInt(workshopData.weekday, 10);
             
-            while (currentDate.getDay() !== targetWeekday) {
-                currentDate.setDate(currentDate.getDate() + 1);
-            }
+            // --- Robust Date Calculation Logic ---
+            let firstSessionDate = new Date();
+            firstSessionDate.setHours(0, 0, 0, 0); // Normalize to midnight to prevent time-of-day issues
 
-            // Calculate end_time as start_time + 1 hour. This prevents database errors
-            // if there's a check constraint (end_time > start_time) and is better practice.
+            const targetWeekday = parseInt(workshopData.weekday, 10);
+            const currentWeekday = firstSessionDate.getDay();
             const [startHours, startMinutes] = workshopData.time.split(':').map(Number);
-            const tempDate = new Date(0); // Use a neutral date object to avoid DST issues with local time
-            tempDate.setUTCHours(startHours + 1, startMinutes, 0, 0); // Add 1 hour
-            const endTime = tempDate.toISOString().substring(11, 16); // Extract HH:mm
+
+            let daysUntilTarget = targetWeekday - currentWeekday;
+
+            // If the target day already passed this week, schedule for next week.
+            if (daysUntilTarget < 0) {
+                daysUntilTarget += 7;
+            } 
+            // If the target day is today, check if the start time has already passed.
+            else if (daysUntilTarget === 0) {
+                const now = new Date();
+                if (now.getHours() > startHours || (now.getHours() === startHours && now.getMinutes() > startMinutes)) {
+                    // Time has passed for today, so schedule for the same day next week.
+                    daysUntilTarget += 7;
+                }
+            }
+            firstSessionDate.setDate(firstSessionDate.getDate() + daysUntilTarget);
+            
+            let currentDate = new Date(firstSessionDate);
+
+            // Calculate end_time as start_time + 1 hour.
+            const tempDate = new Date(0);
+            tempDate.setUTCHours(startHours + 1, startMinutes, 0, 0);
+            const endTime = tempDate.toISOString().substring(11, 16);
 
             for (let i = 1; i <= workshopData.total_sessions; i++) {
+                // Format date string safely to avoid timezone issues from toISOString()
+                const year = currentDate.getFullYear();
+                const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+                const day = String(currentDate.getDate()).padStart(2, '0');
+                const sessionDate = `${year}-${month}-${day}`;
+                
                 sessionsToCreate.push({
                     workshop_id: workshop.id,
                     session_number: i,
                     title: `Session ${i}`,
-                    date: currentDate.toISOString().split('T')[0],
+                    date: sessionDate,
                     start_time: workshopData.time,
-                    end_time: endTime, // Use calculated end time
+                    end_time: endTime,
                     status: 'scheduled' as const,
                 });
+                // Advance to the same day next week
                 currentDate.setDate(currentDate.getDate() + 7);
             }
 
