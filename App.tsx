@@ -161,7 +161,7 @@ const App: React.FC = () => {
                     
                     if (employeeError) console.error("Error fetching user's name:", employeeError);
 
-                    const role = freshUser.app_metadata?.role || 'participant';
+                    const role = 'manager'; // Any logged-in user is designated as the manager.
                     const sessionUser: SessionUser = {
                         id: freshUser.id,
                         email: freshUser.email!,
