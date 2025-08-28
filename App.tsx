@@ -158,26 +158,13 @@ const App: React.FC = () => {
             if (session) {
                 const user = session.user;
                 
-                // Ensure the manager (logged-in user) has a corresponding record in the employees table.
-                // This is critical to satisfy foreign key constraints when creating workshops.
-                const { error: upsertError } = await supabase
-                    .from('employees')
-                    .upsert(
-                        { id: user.id, email: user.email!, name: user.email!.split('@')[0] },
-                        { onConflict: 'id' }
-                    );
-
-                if (upsertError) {
-                    console.error("Error upserting manager into employees table:", upsertError);
-                    setUser(null);
-                    setWorkshops([]);
-                    setEmployees([]);
-                    setIsLoading(false);
-                    return;
-                }
-
+                // The problematic client-side upsert has been removed. The responsibility
+                // now lies with the 'create-workshop' Edge Function to ensure the
+                // employee record exists, which is a more robust, server-side approach.
+                // This fixes the bug where users were stuck on the login page.
                 const role = 'manager'; 
 
+                // Fetch the employee's name for UI display. Fallback to email if not found.
                 const { data: employee } = await supabase
                     .from('employees')
                     .select('name')
@@ -187,7 +174,7 @@ const App: React.FC = () => {
                 const sessionUser: SessionUser = {
                     id: user.id,
                     email: user.email!,
-                    name: employee?.name || user.email!,
+                    name: employee?.name || user.email!.split('@')[0],
                     role: role,
                 };
                 
