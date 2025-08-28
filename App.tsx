@@ -158,13 +158,31 @@ const App: React.FC = () => {
             if (session) {
                 const user = session.user;
                 
+                // Ensure the manager (logged-in user) has a corresponding record in the employees table.
+                // This is critical to satisfy foreign key constraints when creating workshops.
+                const { error: upsertError } = await supabase
+                    .from('employees')
+                    .upsert(
+                        { id: user.id, email: user.email!, name: user.email!.split('@')[0] },
+                        { onConflict: 'id' }
+                    );
+
+                if (upsertError) {
+                    console.error("Error upserting manager into employees table:", upsertError);
+                    setUser(null);
+                    setWorkshops([]);
+                    setEmployees([]);
+                    setIsLoading(false);
+                    return;
+                }
+
+                const role = 'manager'; 
+
                 const { data: employee } = await supabase
                     .from('employees')
                     .select('name')
                     .eq('id', user.id)
                     .single();
-
-                const role = 'manager'; 
 
                 const sessionUser: SessionUser = {
                     id: user.id,
