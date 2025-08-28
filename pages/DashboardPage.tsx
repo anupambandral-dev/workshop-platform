@@ -3,6 +3,7 @@ import { AppContext } from '../App';
 import type { AppContextType, Workshop, Employee } from '../types';
 import { PlusIcon, UsersIcon, CalendarIcon, ClockIcon, XMarkIcon, TrashIcon, ExclamationTriangleIcon } from '../components/Icons';
 import { useNavigate } from 'react-router-dom';
+import UserSearchModal from '../components/UserSearchModal';
 
 const WorkshopCard: React.FC<{ workshop: Workshop, onDelete: () => void, canDelete: boolean }> = ({ workshop, onDelete, canDelete }) => {
     const navigate = useNavigate();
@@ -91,15 +92,18 @@ const WorkshopCard: React.FC<{ workshop: Workshop, onDelete: () => void, canDele
 };
 
 const CreateWorkshopModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-    const { addWorkshop } = useContext(AppContext) as AppContextType;
+    const { addWorkshop, employees } = useContext(AppContext) as AppContextType;
     const [title, setTitle] = useState('');
     const [totalSessions, setTotalSessions] = useState(1);
     const [weekday, setWeekday] = useState('1'); // Monday
     const [time, setTime] = useState('10:00');
     
-    const [hostEmails, setHostEmails] = useState('');
-    const [participantEmails, setParticipantEmails] = useState('');
+    const [selectedHosts, setSelectedHosts] = useState<Employee[]>([]);
+    const [selectedParticipants, setSelectedParticipants] = useState<Employee[]>([]);
     
+    const [isHostSearchOpen, setIsHostSearchOpen] = useState(false);
+    const [isParticipantSearchOpen, setIsParticipantSearchOpen] = useState(false);
+
     const [isCreating, setIsCreating] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -108,85 +112,120 @@ const CreateWorkshopModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
         const workshopData = { title, total_sessions: totalSessions, weekday, time };
         
         try {
-            await addWorkshop(workshopData, hostEmails, participantEmails);
+            await addWorkshop(workshopData, selectedHosts, selectedParticipants);
             onClose();
         } catch (error: any) {
             console.error(error);
-            alert(`Failed to create workshop. Server said: ${error.message}`);
+            alert(`Failed to create workshop: ${error.message}`);
         } finally {
             setIsCreating(false);
         }
     };
+    
+    const renderSelectedUser = (user: Employee, onRemove: () => void) => (
+        <div key={user.id} className="flex items-center justify-between bg-gray-100 p-2 rounded-md">
+            <div>
+                <p className="text-sm font-medium text-gray-800">{user.name}</p>
+                <p className="text-xs text-gray-500">{user.email}</p>
+            </div>
+            <button type="button" onClick={onRemove} className="p-1 text-gray-500 hover:text-red-600 rounded-full hover:bg-gray-200">
+                <XMarkIcon className="h-4 w-4" />
+            </button>
+        </div>
+    );
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-                <form onSubmit={handleSubmit}>
-                    <div className="p-6 sticky top-0 bg-white z-10">
-                        <h2 className="text-2xl font-bold text-gray-900">Create New Workshop</h2>
-                        <p className="mt-1 text-sm text-gray-600">Fill in the details below to schedule a new workshop series.</p>
-                    </div>
-                    <div className="px-6 py-4 space-y-6 border-t border-b border-gray-200">
-                        <div>
-                            <label htmlFor="title" className="block text-sm font-medium text-gray-700">Workshop Title</label>
-                            <input type="text" id="title" value={title} onChange={e => setTitle(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <label htmlFor="totalSessions" className="block text-sm font-medium text-gray-700">Total number of sessions</label>
-                                <input type="number" id="totalSessions" value={totalSessions} min="1" onChange={e => setTotalSessions(parseInt(e.target.value, 10))} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
-                            </div>
-                            <div>
-                                <label htmlFor="weekday" className="block text-sm font-medium text-gray-700">Day of the week</label>
-                                <select id="weekday" value={weekday} onChange={e => setWeekday(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
-                                    <option value="1">Monday</option>
-                                    <option value="2">Tuesday</option>
-                                    <option value="3">Wednesday</option>
-                                    <option value="4">Thursday</option>
-                                    <option value="5">Friday</option>
-                                    <option value="6">Saturday</option>
-                                    <option value="0">Sunday</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label htmlFor="time" className="block text-sm font-medium text-gray-700">Time</label>
-                                <input type="time" id="time" value={time} onChange={e => setTime(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
-                            </div>
-                        </div>
+        <>
+            {isHostSearchOpen && (
+                <UserSearchModal
+                    allUsers={employees}
+                    alreadySelected={[...selectedHosts, ...selectedParticipants]}
+                    onClose={() => setIsHostSearchOpen(false)}
+                    onSelect={(user) => {
+                        setSelectedHosts([...selectedHosts, user]);
+                        setIsHostSearchOpen(false);
+                    }}
+                    title="Select a Host"
+                />
+            )}
+            {isParticipantSearchOpen && (
+                <UserSearchModal
+                    allUsers={employees}
+                    alreadySelected={[...selectedHosts, ...selectedParticipants]}
+                    onClose={() => setIsParticipantSearchOpen(false)}
+                    onSelect={(user) => {
+                        setSelectedParticipants([...selectedParticipants, user]);
+                        setIsParticipantSearchOpen(false);
+                    }}
+                    title="Select a Participant"
+                />
+            )}
 
-                        <fieldset className="border-t border-gray-200 pt-4">
-                            <legend className="text-lg font-medium text-gray-900">Hosts</legend>
-                            <p className="text-sm text-gray-500 mb-2">Enter host emails, separated by commas, spaces, or new lines. New employees will be created if they don't exist.</p>
-                            <textarea
-                                value={hostEmails}
-                                onChange={e => setHostEmails(e.target.value)}
-                                rows={3}
-                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
-                                placeholder="host1@example.com, host2@example.com"
-                            />
-                        </fieldset>
+            <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+                <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+                    <form onSubmit={handleSubmit}>
+                        <div className="p-6 sticky top-0 bg-white z-10">
+                            <h2 className="text-2xl font-bold text-gray-900">Create New Workshop</h2>
+                            <p className="mt-1 text-sm text-gray-600">Fill in the details below to schedule a new workshop series.</p>
+                        </div>
+                        <div className="px-6 py-4 space-y-6 border-t border-b border-gray-200">
+                            <div>
+                                <label htmlFor="title" className="block text-sm font-medium text-gray-700">Workshop Title</label>
+                                <input type="text" id="title" value={title} onChange={e => setTitle(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label htmlFor="totalSessions" className="block text-sm font-medium text-gray-700">Total number of sessions</label>
+                                    <input type="number" id="totalSessions" value={totalSessions} min="1" onChange={e => setTotalSessions(parseInt(e.target.value, 10))} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
+                                </div>
+                                <div>
+                                    <label htmlFor="weekday" className="block text-sm font-medium text-gray-700">Day of the week</label>
+                                    <select id="weekday" value={weekday} onChange={e => setWeekday(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
+                                        <option value="1">Monday</option>
+                                        <option value="2">Tuesday</option>
+                                        <option value="3">Wednesday</option>
+                                        <option value="4">Thursday</option>
+                                        <option value="5">Friday</option>
+                                        <option value="6">Saturday</option>
+                                        <option value="0">Sunday</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label htmlFor="time" className="block text-sm font-medium text-gray-700">Time</label>
+                                    <input type="time" id="time" value={time} onChange={e => setTime(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
+                                </div>
+                            </div>
 
-                         <fieldset className="border-t border-gray-200 pt-4">
-                            <legend className="text-lg font-medium text-gray-900">Participants</legend>
-                             <p className="text-sm text-gray-500 mb-2">Enter participant emails, separated by commas, spaces, or new lines. New employees will be created if they don't exist.</p>
-                             <textarea
-                                value={participantEmails}
-                                onChange={e => setParticipantEmails(e.target.value)}
-                                rows={5}
-                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
-                                placeholder="participant1@example.com, participant2@example.com, participant3@example.com"
-                            />
-                        </fieldset>
-                    </div>
-                    <div className="p-4 bg-gray-50 flex justify-end space-x-3 sticky bottom-0 z-10">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">Cancel</button>
-                        <button type="submit" disabled={isCreating} className="px-4 py-2 text-sm font-medium text-white bg-primary border border-transparent rounded-md shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:bg-primary-300">
-                            {isCreating ? 'Creating...' : 'Create Workshop'}
-                        </button>
-                    </div>
-                </form>
+                             <fieldset className="border-t border-gray-200 pt-4">
+                                <legend className="text-lg font-medium text-gray-900">Hosts</legend>
+                                <div className="mt-2 space-y-2">
+                                    {selectedHosts.map(host => renderSelectedUser(host, () => setSelectedHosts(prev => prev.filter(h => h.id !== host.id))))}
+                                </div>
+                                <button type="button" onClick={() => setIsHostSearchOpen(true)} className="mt-2 text-sm font-medium text-primary hover:text-primary-700">
+                                    + Add Host
+                                </button>
+                            </fieldset>
+
+                             <fieldset className="border-t border-gray-200 pt-4">
+                                <legend className="text-lg font-medium text-gray-900">Participants</legend>
+                                <div className="mt-2 space-y-2">
+                                    {selectedParticipants.map(p => renderSelectedUser(p, () => setSelectedParticipants(prev => prev.filter(user => user.id !== p.id))))}
+                                </div>
+                                <button type="button" onClick={() => setIsParticipantSearchOpen(true)} className="mt-2 text-sm font-medium text-primary hover:text-primary-700">
+                                    + Add Participant
+                                </button>
+                            </fieldset>
+                        </div>
+                        <div className="p-4 bg-gray-50 flex justify-end space-x-3 sticky bottom-0 z-10">
+                            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">Cancel</button>
+                            <button type="submit" disabled={isCreating} className="px-4 py-2 text-sm font-medium text-white bg-primary border border-transparent rounded-md shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:bg-primary-300">
+                                {isCreating ? 'Creating...' : 'Create Workshop'}
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
-        </div>
+        </>
     );
 };
 
