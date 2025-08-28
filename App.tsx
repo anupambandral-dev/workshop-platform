@@ -166,32 +166,35 @@ const App: React.FC = () => {
         setIsLoading(true);
         fetchAllData(); 
         
-        // Check for a stored host session first to prevent conflicts with the auth listener.
         const storedHostSession = sessionStorage.getItem('host_session');
         if (storedHostSession) {
-            setCurrentUser(JSON.parse(storedHostSession));
+            try {
+                setCurrentUser(JSON.parse(storedHostSession));
+            } catch (e) {
+                sessionStorage.removeItem('host_session');
+            }
             setIsLoading(false);
         } else {
-            // If no host session, check for a manager session.
             supabase.auth.getSession().then(({ data: { session } }) => {
                 setupUserSession(session);
             });
+
+            const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+                if (!sessionStorage.getItem('host_session')) {
+                    setupUserSession(session);
+                }
+            });
+
+            return () => subscription.unsubscribe();
         }
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            // This listener should only set/unset manager sessions and not interfere with host sessions.
-            if (!sessionStorage.getItem('host_session')) {
-                setupUserSession(session);
-            }
-        });
-
-        return () => subscription.unsubscribe();
     }, [setupUserSession, fetchAllData]);
 
     const logout = useCallback(async () => {
-        // Clear both manager and host sessions to ensure a clean state.
         sessionStorage.removeItem('host_session');
-        await supabase.auth.signOut();
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+            console.error("Error signing out:", error);
+        }
         setCurrentUser(null);
     }, []);
     
