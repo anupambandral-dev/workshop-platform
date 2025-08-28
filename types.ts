@@ -3,7 +3,7 @@
 // --- Database table shapes (based on your Supabase schema) ---
 
 export type Employee = {
-  id: string; // This should be the auth.users.id for employees who can be hosts
+  id: string; 
   name: string;
   email: string;
   created_at: string;
@@ -11,7 +11,7 @@ export type Employee = {
 
 // This type represents a host linked to a workshop. It's enriched with name/email on the client.
 export type Host = {
-  user_id: string;
+  employee_id: string;
   name?: string;  // Optional: added on the client from the employees list
   email?: string; // Optional: added on the client from the employees list
 };
@@ -140,18 +140,25 @@ export type Database = {
         Row: {
           id: string;
           workshop_id: string;
-          user_id: string;
+          employee_id: string;
         };
         Insert: {
           workshop_id: string;
-          user_id: string;
+          employee_id: string;
         };
         Update: Partial<{
           id: string;
           workshop_id: string;
-          user_id: string;
+          employee_id: string;
         }>;
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "hosts_employee_id_fkey";
+            columns: ["employee_id"];
+            referencedRelation: "employees";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       participants: {
         Row: {
