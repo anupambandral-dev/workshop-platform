@@ -139,15 +139,17 @@ const App: React.FC = () => {
         } else if (data) {
              const enrichedWorkshops = data.map(ws => ({
                 ...ws,
-                hosts: Array.isArray(ws.hosts) ? (ws.hosts as any[]).map(host => {
+                // Fix for line 142: Add Array.isArray check to safely handle cases where ws.hosts is not an array.
+                hosts: (Array.isArray(ws.hosts) ? ws.hosts : []).map((host: any) => {
                     const employee = allEmployees.find(emp => emp.id === host.user_id);
                     return {
                         user_id: host.user_id,
                         name: employee?.name || 'Unknown Host',
                         email: employee?.email || 'No email'
                     };
-                }) : [],
-                participants: Array.isArray(ws.participants) ? (ws.participants as any[]).map(p => {
+                }),
+                // Fix for line 150: Add Array.isArray check to safely handle cases where ws.participants is not an array.
+                participants: (Array.isArray(ws.participants) ? ws.participants : []).map((p: any) => {
                     if (!p.employees) {
                         return {
                             id: p.id,
@@ -164,7 +166,12 @@ const App: React.FC = () => {
                         name: p.employees.name,
                         email: p.employees.email,
                     }
-                }) : [],
+                }),
+                // Fix for line 168: Add Array.isArray check to safely handle cases where ws.sessions is not an array.
+                sessions: (Array.isArray(ws.sessions) ? ws.sessions : []).map((session: any) => ({
+                    ...session,
+                    session_participant_records: session.session_participant_records || [],
+                })),
             }));
             setWorkshops(enrichedWorkshops as unknown as Workshop[]);
         } else {
