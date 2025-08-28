@@ -55,7 +55,7 @@ const AppContent: React.FC = () => {
             <main>
                 <Routes>
                     {/* Manager Routes */}
-                    <Route path="/login" element={currentUser ? <Navigate to="/dashboard" /> : <LoginPage />} />
+                    <Route path="/login" element={currentUser && currentUser.role === 'manager' ? <Navigate to="/dashboard" /> : <LoginPage />} />
                     <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
                     <Route path="/employees" element={<ProtectedRoute><EmployeesPage /></ProtectedRoute>} />
                     <Route path="/workshop/:workshopId" element={<ProtectedRoute><WorkshopDetailPage /></ProtectedRoute>} />
@@ -72,7 +72,7 @@ const AppContent: React.FC = () => {
                     <Route path="/session/:sessionId/live" element={<LiveSessionPage />} />
 
                     {/* Default Route */}
-                    <Route path="*" element={<Navigate to={currentUser ? "/dashboard" : "/login"} />} />
+                    <Route path="*" element={<Navigate to={currentUser ? (currentUser.role === 'host' ? `/host/workshop/${currentUser.workshopId}/dashboard` : '/dashboard') : "/login"} />} />
                 </Routes>
             </main>
         </div>
@@ -166,18 +166,31 @@ const App: React.FC = () => {
         setIsLoading(true);
         fetchAllData(); 
         
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setupUserSession(session);
-        });
+        // Check for a stored host session first to prevent conflicts with the auth listener.
+        const storedHostSession = sessionStorage.getItem('host_session');
+        if (storedHostSession) {
+            setCurrentUser(JSON.parse(storedHostSession));
+            setIsLoading(false);
+        } else {
+            // If no host session, check for a manager session.
+            supabase.auth.getSession().then(({ data: { session } }) => {
+                setupUserSession(session);
+            });
+        }
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setupUserSession(session);
+            // This listener should only set/unset manager sessions and not interfere with host sessions.
+            if (!sessionStorage.getItem('host_session')) {
+                setupUserSession(session);
+            }
         });
 
         return () => subscription.unsubscribe();
     }, [setupUserSession, fetchAllData]);
 
     const logout = useCallback(async () => {
+        // Clear both manager and host sessions to ensure a clean state.
+        sessionStorage.removeItem('host_session');
         await supabase.auth.signOut();
         setCurrentUser(null);
     }, []);
