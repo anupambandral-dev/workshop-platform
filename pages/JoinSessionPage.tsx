@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useMemo } from 'react';
+import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
 import type { Workshop, AppContextType, Session, Participant, SessionWithRecords, SessionParticipantRecord } from '../types';
@@ -16,6 +16,8 @@ const JoinSessionPage: React.FC = () => {
     
     const [view, setView] = useState<'email_input' | 'status_view'>('email_input');
     const [identifiedParticipant, setIdentifiedParticipant] = useState<{ workshop: Workshop, session: SessionWithRecords, participant: Participant, record: SessionParticipantRecord } | null>(null);
+
+    const intervalRef = useRef<number | null>(null);
 
     const { workshop, session } = useMemo(() => {
         if (!sessionId || allWorkshops.length === 0) {
@@ -39,21 +41,45 @@ const JoinSessionPage: React.FC = () => {
        }
     }, [allWorkshops, session]);
 
-    // Real-time subscription for the waiting page
+    // Polling for session status on the waiting page
     useEffect(() => {
+        const stopPolling = () => {
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
+        };
+
         if (view !== 'status_view' || !session || session.status !== 'scheduled') {
+            stopPolling();
             return;
         }
-        
-        const handleSessionUpdate = async (payload: { new: { status: string } }) => {
-            if (payload.new.status === 'live') {
-                const waitingInfoRaw = sessionStorage.getItem('waiting_participant_info');
-                if (!waitingInfoRaw) return;
 
-                const waitingInfo = JSON.parse(waitingInfoRaw);
-                if (waitingInfo.sessionId !== session.id) return;
+        const pollSessionStatus = async () => {
+            if (!sessionStorage.getItem('waiting_participant_info')) {
+                stopPolling();
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase.functions.invoke('get-session-status', {
+                    body: { sessionId: session.id },
+                });
+
+                if (error) {
+                    console.error('Polling error:', error);
+                    return;
+                }
                 
-                try {
+                if (data?.status === 'live') {
+                    stopPolling();
+                    
+                    const waitingInfoRaw = sessionStorage.getItem('waiting_participant_info');
+                    if (!waitingInfoRaw) return;
+
+                    const waitingInfo = JSON.parse(waitingInfoRaw);
+                    if (waitingInfo.sessionId !== session.id) return;
+
                     await supabase.functions.invoke('mark-attendance', {
                         body: { sessionId: session.id, email: waitingInfo.email },
                     });
@@ -66,34 +92,20 @@ const JoinSessionPage: React.FC = () => {
                     }));
                     sessionStorage.removeItem('waiting_participant_info');
                     navigate(`/session/${sessionId}/live`);
-                } catch (err) {
-                     console.error("Error transitioning to live session:", err);
-                     setError("There was an issue joining the live session. Please try refreshing the page.");
                 }
+            } catch (err) {
+                console.error("Error during status poll transition:", err);
             }
         };
 
-        const channel = supabase.channel(`session_status_for_participant_${sessionId}`)
-            .on('postgres_changes', {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'sessions',
-                filter: `id=eq.${sessionId}`,
-            }, handleSessionUpdate)
-            .subscribe((status, err) => {
-                if (status === 'SUBSCRIBED') {
-                    console.log(`Realtime: Subscribed to session ${sessionId}`);
-                }
-                if (err) {
-                    console.error('Realtime subscription error:', err);
-                    setError('Connection to live updates failed. Please refresh to try again.');
-                }
-            });
+        intervalRef.current = setInterval(pollSessionStatus, 3000);
+        pollSessionStatus();
 
         return () => {
-            supabase.removeChannel(channel);
+            stopPolling();
         };
     }, [view, session, sessionId, navigate]);
+
 
     const handleIdentify = async (e: React.FormEvent) => {
         e.preventDefault();
