@@ -195,7 +195,10 @@ const App: React.FC = () => {
         if (error) {
             console.error("Error signing out:", error);
         }
+        // This is the critical fix: Reset all data to prevent stale state issues.
         setCurrentUser(null);
+        setAllWorkshops([]);
+        setEmployees([]);
     }, []);
     
      const addWorkshop = useCallback(async (workshopData: { title: string; total_sessions: number; weekday: string; time: string }, hosts: Employee[], participants: Employee[]) => {
