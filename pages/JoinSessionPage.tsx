@@ -39,48 +39,60 @@ const JoinSessionPage: React.FC = () => {
        }
     }, [allWorkshops, session]);
 
-    // Polling mechanism for the waiting page
+    // Real-time subscription for the waiting page
     useEffect(() => {
         if (view !== 'status_view' || !session || session.status !== 'scheduled') {
             return;
         }
-
-        const interval = setInterval(async () => {
-            const { data, error } = await supabase.functions.invoke('get-session-status', {
-                body: { sessionId: session.id }
-            });
-
-            if (error) {
-                console.error("Error polling session status:", error);
-                return; // Don't stop polling on a single error
-            }
-
-            if (data?.status === 'live') {
-                clearInterval(interval); // Stop polling
-
+        
+        const handleSessionUpdate = async (payload: { new: { status: string } }) => {
+            if (payload.new.status === 'live') {
                 const waitingInfoRaw = sessionStorage.getItem('waiting_participant_info');
                 if (!waitingInfoRaw) return;
-                
+
                 const waitingInfo = JSON.parse(waitingInfoRaw);
                 if (waitingInfo.sessionId !== session.id) return;
+                
+                try {
+                    await supabase.functions.invoke('mark-attendance', {
+                        body: { sessionId: session.id, email: waitingInfo.email },
+                    });
 
-                await supabase.functions.invoke('mark-attendance', {
-                    body: { sessionId: session.id, email: waitingInfo.email },
-                });
-
-                sessionStorage.setItem('workshop_session_user', JSON.stringify({
-                    id: waitingInfo.id,
-                    name: waitingInfo.name,
-                    email: waitingInfo.email,
-                    role: 'participant',
-                }));
-                sessionStorage.removeItem('waiting_participant_info');
-                navigate(`/session/${sessionId}/live`);
+                    sessionStorage.setItem('workshop_session_user', JSON.stringify({
+                        id: waitingInfo.id,
+                        name: waitingInfo.name,
+                        email: waitingInfo.email,
+                        role: 'participant',
+                    }));
+                    sessionStorage.removeItem('waiting_participant_info');
+                    navigate(`/session/${sessionId}/live`);
+                } catch (err) {
+                     console.error("Error transitioning to live session:", err);
+                     setError("There was an issue joining the live session. Please try refreshing the page.");
+                }
             }
-        }, 5000); // Poll every 5 seconds
+        };
 
-        return () => clearInterval(interval);
+        const channel = supabase.channel(`session_status_for_participant_${sessionId}`)
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'sessions',
+                filter: `id=eq.${sessionId}`,
+            }, handleSessionUpdate)
+            .subscribe((status, err) => {
+                if (status === 'SUBSCRIBED') {
+                    console.log(`Realtime: Subscribed to session ${sessionId}`);
+                }
+                if (err) {
+                    console.error('Realtime subscription error:', err);
+                    setError('Connection to live updates failed. Please refresh to try again.');
+                }
+            });
 
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [view, session, sessionId, navigate]);
 
     const handleIdentify = async (e: React.FormEvent) => {
@@ -186,13 +198,26 @@ const JoinSessionPage: React.FC = () => {
         
         if (session.status === 'scheduled') {
             return (
-                 <div className="flex flex-col items-center justify-center min-h-[calc(100vh-80px)] bg-gray-50 px-4 text-center">
-                     <LogoIcon className="mx-auto h-12 w-auto text-primary" />
-                     <h2 className="mt-6 text-3xl font-extrabold text-gray-900">{workshop.title}</h2>
-                     <p className="mt-2 text-xl text-gray-800">{session.title}</p>
-                     <p className="mt-8 text-2xl text-gray-600 animate-pulse">The host has not started the session yet.</p>
-                     <p className="mt-2 text-gray-500">This page will automatically update when the session begins.</p>
-                 </div>
+                 <div className="flex items-center justify-center min-h-[calc(100vh-80px)] bg-gray-50 px-4">
+                    <div className="w-full max-w-lg text-center bg-white p-10 shadow-lg rounded-lg">
+                        <LogoIcon className="mx-auto h-12 w-auto text-primary" />
+                        <h2 className="mt-6 text-3xl font-bold text-gray-900">{workshop.title}</h2>
+                        <p className="mt-2 text-xl text-gray-700">{session.title}</p>
+                        
+                        {error && <p className="mt-4 text-sm text-red-600 text-center">{error}</p>}
+
+                        <div className="mt-8">
+                            <div className="flex justify-center items-center space-x-2">
+                                <div className="w-3 h-3 bg-primary rounded-full animate-pulse [animation-delay:-0.3s]"></div>
+                                <div className="w-3 h-3 bg-primary rounded-full animate-pulse [animation-delay:-0.15s]"></div>
+                                <div className="w-3 h-3 bg-primary rounded-full animate-pulse"></div>
+                            </div>
+                            <p className="mt-4 text-2xl font-semibold text-gray-800">You're in the waiting room</p>
+                            <p className="mt-2 text-gray-600">The session will begin shortly. Please wait for the host to start.</p>
+                            <p className="mt-1 text-sm text-gray-500">This page will update automatically.</p>
+                        </div>
+                    </div>
+                </div>
             );
         }
 
