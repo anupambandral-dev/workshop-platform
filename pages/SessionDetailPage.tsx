@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
 import { AppContextType, CurrentUser } from '../types';
 import { CalendarIcon, ClockIcon, ClipboardIcon } from '../components/Icons';
+import { supabase } from '../services/supabase';
 
 type Tab = 'details' | 'go-live' | 'attendance' | 'reflection';
 
@@ -120,6 +121,18 @@ const SessionDetailPage: React.FC = () => {
 
     const handleGoLive = async () => {
         if (session && activeUser) {
+            // Clear previous chat history for a clean slate
+            const { error: deleteError } = await supabase
+                .from('chat_messages')
+                .delete()
+                .eq('session_id', session.id);
+            
+            if (deleteError) {
+                console.error("Failed to clear chat history:", deleteError);
+                alert("Could not start session cleanly. Please try again.");
+                return; // Stop if clearing fails
+            }
+
             await updateSession({ ...session, status: 'live' });
             sessionStorage.setItem('workshop_session_user', JSON.stringify({
                  id: activeUser.id,
