@@ -80,10 +80,7 @@ const JoinSessionPage: React.FC = () => {
                     const waitingInfo = JSON.parse(waitingInfoRaw);
                     if (waitingInfo.sessionId !== session.id) return;
 
-                    await supabase.functions.invoke('mark-attendance', {
-                        body: { sessionId: session.id, email: waitingInfo.email },
-                    });
-
+                    // Attendance is now marked on the LiveSessionPage
                     sessionStorage.setItem('workshop_session_user', JSON.stringify({
                         id: waitingInfo.id,
                         name: waitingInfo.name,
@@ -123,9 +120,7 @@ const JoinSessionPage: React.FC = () => {
             setIdentifiedParticipant(participantData);
             
             if (session.status === 'live') {
-                await supabase.functions.invoke('mark-attendance', {
-                    body: { sessionId: session.id, email: participant.email },
-                });
+                // Attendance is now marked on the LiveSessionPage
                 sessionStorage.setItem('workshop_session_user', JSON.stringify({
                     id: participant.id,
                     name: participant.name,
