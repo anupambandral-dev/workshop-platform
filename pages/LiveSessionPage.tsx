@@ -350,10 +350,10 @@ const LiveSessionPage: React.FC = () => {
                             <p className="mt-2 text-lg text-gray-600">This session has ended.</p>
                         </div>
                         <button
-                            onClick={() => navigate(`/workshop/${workshop.id}`)}
+                            onClick={() => navigate(`/host/workshop/${workshop.id}/dashboard`)}
                             className="px-5 py-3 font-medium text-white bg-primary rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
                         >
-                            Back to Workshop Details
+                            Back to Host Dashboard
                         </button>
                      </div>
                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-220px)]">
