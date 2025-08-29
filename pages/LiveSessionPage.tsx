@@ -246,7 +246,7 @@ const LiveSessionPage: React.FC = () => {
                     if (error) {
                         console.error('Failed to mark attendance automatically:', error);
                     }
-                    // The real-time subscription will handle updating the UI state.
+                    // The real-time broadcast will now handle updating the UI state.
                 } catch (err) {
                     console.error('Error invoking mark-attendance function:', err);
                 }
@@ -276,7 +276,7 @@ const LiveSessionPage: React.FC = () => {
             )
             .subscribe();
 
-        // --- 3. Subscribe to session status changes (for participants) ---
+        // --- 3. Subscribe to session status changes AND direct attendance updates ---
         const sessionChannel = supabase.channel(`session_${session.id}`)
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sessions', filter: `id=eq.${session.id}` },
                 (payload) => {
@@ -288,25 +288,20 @@ const LiveSessionPage: React.FC = () => {
                     }
                 }
             )
-            .subscribe();
-        
-        // --- 4. Subscribe to attendance changes ---
-        const attendanceChannel = supabase.channel(`attendance_${session.id}`)
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'session_participant_records', filter: `session_id=eq.${session.id}` },
-                (payload) => {
-                    // Update global state instantly
-                    updateParticipantRecordInState(payload.new as SessionParticipantRecord);
+            .on('broadcast', { event: 'attendance_update' }, (payload) => {
+                // This listener receives explicit messages from our mark-attendance function.
+                // This is more reliable than listening for database changes.
+                if (payload.payload?.newRecord) {
+                    updateParticipantRecordInState(payload.payload.newRecord as SessionParticipantRecord);
                 }
-            )
+            })
             .subscribe();
-
 
         return () => {
             supabase.removeChannel(chatChannel);
             supabase.removeChannel(sessionChannel);
-            supabase.removeChannel(attendanceChannel);
         };
-    }, [session, currentUser, isHost, updateSessionInState, updateParticipantRecordInState]);
+    }, [session, currentUser, updateSessionInState, updateParticipantRecordInState]);
 
     const handleSendMessage = async (message: string) => {
         if (!currentUser || !session) return;
