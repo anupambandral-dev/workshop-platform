@@ -107,12 +107,13 @@ export interface CurrentUser {
 
 export interface AppContextType {
   currentUser: CurrentUser | null;
-  workshops: Workshop[]; // Filtered list for the logged-in user
-  allWorkshops: Workshop[]; // Unfiltered list for public pages
+  // Fix: Add `setCurrentUser` to the context type so components can update the current user state.
+  setCurrentUser: (user: CurrentUser | null) => void;
+  workshops: Workshop[]; // For manager dashboard
+  allWorkshops: Workshop[]; // For public pages
   employees: Employee[];
   isLoading: boolean;
   logout: () => Promise<void>;
-  setCurrentUser: (user: CurrentUser | null) => void;
   addWorkshop: (
     workshopData: { title: string; total_sessions: number; weekday: string; time: string },
     hosts: Employee[], 

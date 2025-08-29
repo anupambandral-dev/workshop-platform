@@ -14,7 +14,6 @@ const JoinSessionPage: React.FC = () => {
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     
-    // State to manage the participant's view
     const [view, setView] = useState<'email_input' | 'status_view'>('email_input');
     const [identifiedParticipant, setIdentifiedParticipant] = useState<{ workshop: Workshop, session: SessionWithRecords, participant: Participant, record: SessionParticipantRecord } | null>(null);
 
@@ -40,60 +39,47 @@ const JoinSessionPage: React.FC = () => {
        }
     }, [allWorkshops, session]);
 
-    // Real-time listener for the waiting page
+    // Polling mechanism for the waiting page
     useEffect(() => {
         if (view !== 'status_view' || !session || session.status !== 'scheduled') {
             return;
         }
 
-        const channel = supabase.channel(`session_status_${session.id}`)
-            .on('postgres_changes', {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'sessions',
-                filter: `id=eq.${session.id}`
-            }, (payload) => {
-                if ((payload.new as Session).status === 'live') {
-                    // Host has started the session, update attendance and redirect participant
-                    const updateAttendanceAndNavigate = async () => {
-                        const waitingInfoRaw = sessionStorage.getItem('waiting_participant_info');
-                        if (!waitingInfoRaw) return;
-                        
-                        const waitingInfo = JSON.parse(waitingInfoRaw);
-                        // Ensure this subscription is for the user on this page
-                        if (waitingInfo.sessionId !== session.id) return;
+        const interval = setInterval(async () => {
+            const { data, error } = await supabase.functions.invoke('get-session-status', {
+                body: { sessionId: session.id }
+            });
 
-                        // Securely mark attendance via Edge Function
-                        const { error } = await supabase.functions.invoke('mark-attendance', {
-                            body: {
-                                sessionId: session.id,
-                                email: waitingInfo.email,
-                            },
-                        });
-                        
-                        if (error) {
-                            console.error("Failed to invoke mark-attendance function:", error);
-                            // Proceed to join even if it fails, to not block the user
-                        }
+            if (error) {
+                console.error("Error polling session status:", error);
+                return; // Don't stop polling on a single error
+            }
 
-                        // Now set storage for the live page and navigate
-                        sessionStorage.setItem('workshop_session_user', JSON.stringify({
-                            id: waitingInfo.id,
-                            name: waitingInfo.name,
-                            email: waitingInfo.email,
-                            role: 'participant',
-                        }));
-                        sessionStorage.removeItem('waiting_participant_info');
-                        navigate(`/session/${sessionId}/live`);
-                    };
-                    updateAttendanceAndNavigate();
-                }
-            })
-            .subscribe();
+            if (data?.status === 'live') {
+                clearInterval(interval); // Stop polling
 
-        return () => {
-            supabase.removeChannel(channel);
-        };
+                const waitingInfoRaw = sessionStorage.getItem('waiting_participant_info');
+                if (!waitingInfoRaw) return;
+                
+                const waitingInfo = JSON.parse(waitingInfoRaw);
+                if (waitingInfo.sessionId !== session.id) return;
+
+                await supabase.functions.invoke('mark-attendance', {
+                    body: { sessionId: session.id, email: waitingInfo.email },
+                });
+
+                sessionStorage.setItem('workshop_session_user', JSON.stringify({
+                    id: waitingInfo.id,
+                    name: waitingInfo.name,
+                    email: waitingInfo.email,
+                    role: 'participant',
+                }));
+                sessionStorage.removeItem('waiting_participant_info');
+                navigate(`/session/${sessionId}/live`);
+            }
+        }, 5000); // Poll every 5 seconds
+
+        return () => clearInterval(interval);
 
     }, [view, session, sessionId, navigate]);
 
@@ -112,16 +98,10 @@ const JoinSessionPage: React.FC = () => {
             const participantData = { workshop, session, participant, record };
             setIdentifiedParticipant(participantData);
             
-            // If the session is live, mark attendance and redirect immediately
             if (session.status === 'live') {
-                 // Securely mark attendance via Edge Function
                 await supabase.functions.invoke('mark-attendance', {
-                    body: {
-                        sessionId: session.id,
-                        email: participant.email,
-                    },
+                    body: { sessionId: session.id, email: participant.email },
                 });
-
                 sessionStorage.setItem('workshop_session_user', JSON.stringify({
                     id: participant.id,
                     name: participant.name,
@@ -130,7 +110,6 @@ const JoinSessionPage: React.FC = () => {
                 }));
                 navigate(`/session/${sessionId}/live`);
             } else {
-                // If scheduled, store info for the listener and show the waiting view
                 sessionStorage.setItem('waiting_participant_info', JSON.stringify({
                     sessionId: session.id,
                     email: participant.email,
@@ -152,7 +131,6 @@ const JoinSessionPage: React.FC = () => {
         return <div className="text-center p-10 text-red-500">Error: {error || "Could not load session."}</div>
     }
 
-    // View 1: Email Input Form
     if (view === 'email_input') {
         return (
             <div className="flex items-center justify-center min-h-[calc(100vh-80px)] bg-gray-50 px-4">
@@ -203,11 +181,9 @@ const JoinSessionPage: React.FC = () => {
         );
     }
 
-    // View 2: Status View (Scheduled or Ended)
     if (view === 'status_view' && identifiedParticipant) {
         const { workshop, session, record } = identifiedParticipant;
         
-        // Scenario: Session has not started yet
         if (session.status === 'scheduled') {
             return (
                  <div className="flex flex-col items-center justify-center min-h-[calc(100vh-80px)] bg-gray-50 px-4 text-center">
@@ -220,7 +196,6 @@ const JoinSessionPage: React.FC = () => {
             );
         }
 
-        // Scenario: Session has ended
         if (session.status === 'ended') {
             const attended = record.attendance === 'present';
             return (
@@ -247,7 +222,6 @@ const JoinSessionPage: React.FC = () => {
         }
     }
 
-    // Fallback view
     return <div className="text-center p-10">Loading...</div>;
 };
 

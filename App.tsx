@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useCallback, useEffect, createContext } from 'react';
 import { HashRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { supabase } from './services/supabase';
@@ -11,6 +12,7 @@ import SessionDetailPage from './pages/SessionDetailPage';
 import EmployeesPage from './pages/EmployeesPage';
 import HostWorkshopLoginPage from './pages/HostWorkshopLoginPage';
 import HostWorkshopDashboardPage from './pages/HostWorkshopDashboardPage';
+import HostLayout from './layouts/HostLayout';
 import { LogoIcon } from './components/Icons';
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -21,7 +23,6 @@ const AppContent: React.FC = () => {
     const { currentUser, logout } = context;
     const location = useLocation();
 
-    // Hide logout on all public-facing pages
     const isPublicPage = location.pathname.startsWith('/session/') || location.pathname.startsWith('/host/');
     const isManager = currentUser?.role === 'manager';
 
@@ -60,8 +61,10 @@ const AppContent: React.FC = () => {
                     <Route path="/employees" element={<ProtectedRoute><EmployeesPage /></ProtectedRoute>} />
                     <Route path="/workshop/:workshopId" element={<ProtectedRoute><WorkshopDetailPage /></ProtectedRoute>} />
                     
-                    {/* Host-specific Dashboard */}
-                    <Route path="/host/workshop/:workshopId/dashboard" element={<HostWorkshopDashboardPage />} />
+                    {/* Host-specific Routes wrapped in a security layout */}
+                    <Route path="/host/workshop/:workshopId" element={<HostLayout />}>
+                        <Route path="dashboard" element={<HostWorkshopDashboardPage />} />
+                    </Route>
 
                     {/* Shared manager/host route */}
                     <Route path="/workshop/:workshopId/session/:sessionId" element={<SessionDetailPage />} />
@@ -72,7 +75,7 @@ const AppContent: React.FC = () => {
                     <Route path="/session/:sessionId/live" element={<LiveSessionPage />} />
 
                     {/* Default Route */}
-                    <Route path="*" element={<Navigate to={currentUser ? (currentUser.role === 'host' ? `/host/workshop/${currentUser.workshopId}/dashboard` : '/dashboard') : "/login"} />} />
+                    <Route path="*" element={<Navigate to={currentUser ? "/dashboard" : "/login"} />} />
                 </Routes>
             </main>
         </div>
@@ -149,56 +152,50 @@ const App: React.FC = () => {
         setIsLoading(false);
     }, []);
     
-    const setupUserSession = useCallback(async (session: any | null) => {
-        if (session?.user) {
-            const user: CurrentUser = {
-                id: session.user.id, name: session.user.email?.split('@')[0] || 'User',
-                email: session.user.email!, role: 'manager',
-            };
-            setCurrentUser(user);
-        } else {
-            setCurrentUser(null);
-        }
-        setIsLoading(false);
-    }, []);
-
+    // This effect now only handles the initial data load.
+    useEffect(() => {
+        fetchAllData();
+    }, [fetchAllData]);
+    
+    // This effect handles the manager's auth session. Host session is handled in HostLayout.
     useEffect(() => {
         setIsLoading(true);
-        fetchAllData(); 
-        
-        const storedHostSession = sessionStorage.getItem('host_session');
-        if (storedHostSession) {
-            try {
-                setCurrentUser(JSON.parse(storedHostSession));
-            } catch (e) {
-                sessionStorage.removeItem('host_session');
+        supabase.auth.getSession().then(({ data: { session } }) => {
+             if (session?.user) {
+                const user: CurrentUser = {
+                    id: session.user.id, name: session.user.email?.split('@')[0] || 'User',
+                    email: session.user.email!, role: 'manager',
+                };
+                setCurrentUser(user);
+            } else {
+                setCurrentUser(null);
             }
             setIsLoading(false);
-        } else {
-            supabase.auth.getSession().then(({ data: { session } }) => {
-                setupUserSession(session);
-            });
+        });
 
-            const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-                if (!sessionStorage.getItem('host_session')) {
-                    setupUserSession(session);
-                }
-            });
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (session?.user) {
+                const user: CurrentUser = {
+                    id: session.user.id, name: session.user.email?.split('@')[0] || 'User',
+                    email: session.user.email!, role: 'manager',
+                };
+                setCurrentUser(user);
+            } else {
+                setCurrentUser(null);
+            }
+            setIsLoading(false);
+        });
 
-            return () => subscription.unsubscribe();
-        }
-    }, [setupUserSession, fetchAllData]);
+        return () => subscription.unsubscribe();
+    }, []);
 
     const logout = useCallback(async () => {
+        // Clear both potential sessions for a full logout
         sessionStorage.removeItem('host_session');
         const { error } = await supabase.auth.signOut();
-        if (error) {
-            console.error("Error signing out:", error);
-        }
-        // This is the critical fix: Reset all data to prevent stale state issues.
+        if (error) console.error("Error signing out:", error);
         setCurrentUser(null);
-        setAllWorkshops([]);
-        setEmployees([]);
+        // Do not clear all data, as public pages might need it. Let the next auth state handle it.
     }, []);
     
      const addWorkshop = useCallback(async (workshopData: { title: string; total_sessions: number; weekday: string; time: string }, hosts: Employee[], participants: Employee[]) => {
@@ -317,20 +314,17 @@ const App: React.FC = () => {
         }));
     }, []);
     
-    const workshopsForCurrentUser = useMemo(() => {
-        if (!currentUser) return [];
-        if (currentUser.role === 'manager') return allWorkshops;
-        if (currentUser.role === 'host') {
-            return allWorkshops.filter(ws => ws.id === currentUser.workshopId);
-        }
+    const workshopsForManager = useMemo(() => {
+        if (currentUser?.role === 'manager') return allWorkshops;
         return [];
     }, [currentUser, allWorkshops]);
 
     const value = useMemo(() => ({
         currentUser,
+        // Fix: Pass the actual setCurrentUser state setter to the context. This allows components to update the user state.
         setCurrentUser,
-        workshops: workshopsForCurrentUser,
-        allWorkshops,
+        workshops: workshopsForManager, // only for manager dashboard
+        allWorkshops, // for public/host pages
         employees,
         isLoading,
         logout,
@@ -340,7 +334,8 @@ const App: React.FC = () => {
         deleteWorkshop,
         updateSessionInState,
         updateParticipantRecordInState
-    }), [currentUser, workshopsForCurrentUser, allWorkshops, employees, isLoading, logout, addWorkshop, addEmployees, updateSession, deleteWorkshop, updateSessionInState, updateParticipantRecordInState]);
+        // Fix: Added setCurrentUser to the dependency array.
+    }), [currentUser, setCurrentUser, workshopsForManager, allWorkshops, employees, isLoading, logout, addWorkshop, addEmployees, updateSession, deleteWorkshop, updateSessionInState, updateParticipantRecordInState]);
 
     return (
         <AppContext.Provider value={value}>

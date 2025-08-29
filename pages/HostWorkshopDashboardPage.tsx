@@ -1,4 +1,4 @@
-import React, { useContext, useMemo, useEffect } from 'react';
+import React, { useContext, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
 import { AppContextType } from '../types';
@@ -6,20 +6,16 @@ import { CalendarIcon, ClockIcon, UsersIcon } from '../components/Icons';
 
 const HostWorkshopDashboardPage: React.FC = () => {
     const { workshopId } = useParams<{ workshopId: string }>();
-    const { allWorkshops, currentUser, logout, isLoading } = useContext(AppContext) as AppContextType;
+    const { allWorkshops, logout, isLoading } = useContext(AppContext) as AppContextType;
     const navigate = useNavigate();
 
     const workshop = useMemo(() => allWorkshops.find(ws => ws.id === workshopId), [allWorkshops, workshopId]);
 
-    // Security check: ensure the current user is an authorized host for this workshop
-    useEffect(() => {
-        if (!isLoading && (!currentUser || currentUser.role !== 'host' || currentUser.workshopId !== workshopId)) {
-            navigate(`/host/workshop/${workshopId}/login`, { replace: true });
-        }
-    }, [currentUser, workshopId, navigate, isLoading]);
+    // The security check is now handled by the parent HostLayout component.
+    // This component can now safely assume it has access if it renders.
 
-    if (isLoading || !currentUser || !workshop) {
-        return <div className="p-10 text-center">Verifying access and loading workshop details...</div>;
+    if (isLoading || !workshop) {
+        return <div className="p-10 text-center">Loading workshop details...</div>;
     }
     
     const getStatusChip = (status: 'scheduled' | 'live' | 'ended') => {

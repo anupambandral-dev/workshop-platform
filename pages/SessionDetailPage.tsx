@@ -1,7 +1,7 @@
 import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
-import { AppContextType } from '../types';
+import { AppContextType, CurrentUser } from '../types';
 import { CalendarIcon, ClockIcon, ClipboardIcon } from '../components/Icons';
 
 type Tab = 'details' | 'go-live' | 'attendance' | 'reflection';
@@ -12,6 +12,7 @@ const SessionDetailPage: React.FC = () => {
     const navigate = useNavigate();
     
     const [activeTab, setActiveTab] = useState<Tab>('details');
+    const [isAuthorized, setIsAuthorized] = useState(false);
 
     const { workshop, session } = useMemo(() => {
         if (!workshopId || !sessionId || allWorkshops.length === 0) {
@@ -23,28 +24,34 @@ const SessionDetailPage: React.FC = () => {
         return { workshop: ws, session: s || null };
     }, [allWorkshops, workshopId, sessionId]);
 
-    // Determine authorization based on the unified currentUser
-    const isAuthorized = useMemo(() => {
-        if (!currentUser || !workshop) {
-            return false;
-        }
-        if (currentUser.role === 'manager') {
-            return true;
-        }
-        if (currentUser.role === 'host' && currentUser.workshopId === workshop.id) {
-            return true;
-        }
-        return false;
-    }, [currentUser, workshop]);
-
     useEffect(() => {
-        // If data has loaded and we've determined the user is not authorized, redirect them.
-        if (!isLoading && allWorkshops.length > 0 && !isAuthorized) {
-            // A non-manager/host user might be here. The safest place to send them
-            // is the workshop's host login page, as they are not a manager.
-            navigate(`/host/workshop/${workshopId}/login`);
+        if (isLoading) return; // Wait for initial app loading to complete
+
+        // Check for host session first
+        const storedHostSession = sessionStorage.getItem('host_session');
+        if (storedHostSession) {
+            try {
+                const hostUser: CurrentUser = JSON.parse(storedHostSession);
+                if (hostUser.role === 'host' && hostUser.workshopId === workshopId) {
+                    setIsAuthorized(true);
+                    return;
+                }
+            } catch (e) { /* ignore */ }
         }
-    }, [isLoading, allWorkshops, isAuthorized, navigate, workshopId]);
+
+        // If no valid host session, check for manager session
+        if (currentUser?.role === 'manager') {
+            setIsAuthorized(true);
+            return;
+        }
+        
+        // If neither, and data has loaded, redirect
+        if (allWorkshops.length > 0) {
+             setIsAuthorized(false);
+             navigate(`/host/workshop/${workshopId}/login`, { replace: true });
+        }
+    }, [isLoading, currentUser, workshopId, allWorkshops, navigate]);
+
 
     const [formData, setFormData] = useState({
         title: '',
@@ -71,10 +78,25 @@ const SessionDetailPage: React.FC = () => {
     }
 
     if (!isAuthorized) {
-        return <div className="p-10 text-center">Checking authorization...</div>;
+        return <div className="p-10 text-center">Verifying authorization...</div>;
     }
     
     const shareableLink = `${window.location.origin}${window.location.pathname.split('#')[0]}#/session/${session.id}/join`;
+    
+    const getActiveUser = (): CurrentUser | null => {
+        if (currentUser?.role === 'manager') return currentUser;
+        const storedHostSession = sessionStorage.getItem('host_session');
+        if (storedHostSession) {
+            try {
+                return JSON.parse(storedHostSession);
+            } catch (e) {
+                return null;
+            }
+        }
+        return null;
+    };
+    const activeUser = getActiveUser();
+
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { id, value } = e.target;
@@ -97,13 +119,13 @@ const SessionDetailPage: React.FC = () => {
     };
 
     const handleGoLive = async () => {
-        if (session && currentUser) {
+        if (session && activeUser) {
             await updateSession({ ...session, status: 'live' });
             sessionStorage.setItem('workshop_session_user', JSON.stringify({
-                 id: currentUser.id,
-                 name: currentUser.name,
-                 email: currentUser.email,
-                 role: currentUser.role,
+                 id: activeUser.id,
+                 name: activeUser.name,
+                 email: activeUser.email,
+                 role: activeUser.role,
             }));
             navigate(`/session/${session.id}/live`);
         }
@@ -112,10 +134,10 @@ const SessionDetailPage: React.FC = () => {
     return (
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div className="mb-6">
-                {currentUser.role === 'manager' && (
+                {activeUser?.role === 'manager' && (
                     <Link to={`/workshop/${workshopId}`} className="text-sm font-medium text-primary hover:text-primary-700">&larr; Back to Workshop</Link>
                 )}
-                 {currentUser.role === 'host' && (
+                 {activeUser?.role === 'host' && (
                     <Link to={`/host/workshop/${workshopId}/dashboard`} className="text-sm font-medium text-primary hover:text-primary-700">&larr; Back to Host Dashboard</Link>
                 )}
                 <h1 className="text-3xl font-bold text-gray-900 mt-2">{session.title}</h1>
