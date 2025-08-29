@@ -224,6 +224,37 @@ const LiveSessionPage: React.FC = () => {
         }
     }, [sessionId, allWorkshops, workshop, session, navigate]);
     
+    // This effect runs once for participants to mark their attendance upon joining.
+    useEffect(() => {
+        // Only run for participants who have been identified
+        if (!session || !currentUser || currentUser.role !== 'participant') {
+            return;
+        }
+
+        const participantRecord = session.session_participant_records.find(
+            record => record.participant_id === currentUser.id
+        );
+
+        // If the record exists and attendance is still pending, mark as present.
+        if (participantRecord && participantRecord.attendance === 'pending') {
+            const markAsPresent = async () => {
+                try {
+                    const { error } = await supabase.functions.invoke('mark-attendance', {
+                        body: { sessionId: session.id, email: currentUser.email },
+                    });
+
+                    if (error) {
+                        console.error('Failed to mark attendance automatically:', error);
+                    }
+                    // The real-time subscription will handle updating the UI state.
+                } catch (err) {
+                    console.error('Error invoking mark-attendance function:', err);
+                }
+            };
+            markAsPresent();
+        }
+    }, [session, currentUser]);
+    
     // Real-time subscriptions
     useEffect(() => {
         if (!session || !currentUser) return;
