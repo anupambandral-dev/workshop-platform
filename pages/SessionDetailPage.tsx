@@ -1,19 +1,21 @@
 import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
-import { AppContextType, CurrentUser } from '../types';
+import { AppContextType, CurrentUser, Session, ChatMessage } from '../types';
 import { CalendarIcon, ClockIcon, ClipboardIcon } from '../components/Icons';
 import { supabase } from '../services/supabase';
+import ChatPanel from '../components/ChatPanel';
 
-type Tab = 'details' | 'go-live' | 'attendance' | 'reflection';
+type Tab = 'details' | 'go-live' | 'attendance' | 'reflection' | 'chat';
 
 const SessionDetailPage: React.FC = () => {
     const { workshopId, sessionId } = useParams<{ workshopId: string, sessionId: string }>();
-    const { allWorkshops, updateSession, currentUser, isLoading } = useContext(AppContext) as AppContextType;
+    const { allWorkshops, updateSession, currentUser, isLoading, updateSessionInState } = useContext(AppContext) as AppContextType;
     const navigate = useNavigate();
     
     const [activeTab, setActiveTab] = useState<Tab>('details');
     const [isAuthorized, setIsAuthorized] = useState(false);
+    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
     const { workshop, session } = useMemo(() => {
         if (!workshopId || !sessionId || allWorkshops.length === 0) {
@@ -25,33 +27,33 @@ const SessionDetailPage: React.FC = () => {
         return { workshop: ws, session: s || null };
     }, [allWorkshops, workshopId, sessionId]);
 
-    useEffect(() => {
-        if (isLoading) return; // Wait for initial app loading to complete
-
-        // Check for host session first
+    const activeUser = useMemo(() => {
+        if (currentUser?.role === 'manager') return currentUser;
         const storedHostSession = sessionStorage.getItem('host_session');
         if (storedHostSession) {
             try {
                 const hostUser: CurrentUser = JSON.parse(storedHostSession);
                 if (hostUser.role === 'host' && hostUser.workshopId === workshopId) {
-                    setIsAuthorized(true);
-                    return;
+                    return hostUser;
                 }
-            } catch (e) { /* ignore */ }
+            } catch (e) {
+                return null;
+            }
         }
+        return null;
+    }, [currentUser, workshopId]);
+    
+    useEffect(() => {
+        if (isLoading) return; // Wait for initial app loading to complete
 
-        // If no valid host session, check for manager session
-        if (currentUser?.role === 'manager') {
+        if (activeUser) {
             setIsAuthorized(true);
-            return;
+        } else if (allWorkshops.length > 0) {
+            // If not authorized and data is loaded, redirect
+            setIsAuthorized(false);
+            navigate(`/host/workshop/${workshopId}/login`, { replace: true });
         }
-        
-        // If neither, and data has loaded, redirect
-        if (allWorkshops.length > 0) {
-             setIsAuthorized(false);
-             navigate(`/host/workshop/${workshopId}/login`, { replace: true });
-        }
-    }, [isLoading, currentUser, workshopId, allWorkshops, navigate]);
+    }, [isLoading, activeUser, allWorkshops.length, workshopId, navigate]);
 
 
     const [formData, setFormData] = useState({
@@ -74,6 +76,54 @@ const SessionDetailPage: React.FC = () => {
         }
     }, [session]);
     
+    // Fetch chat history for ended sessions
+    useEffect(() => {
+        if (session?.status === 'ended' && sessionId) {
+            const fetchChat = async () => {
+                const { data, error } = await supabase.from('chat_messages').select('*').eq('session_id', sessionId).order('created_at');
+                if (error) {
+                    console.error("Error fetching chat history:", error);
+                } else {
+                    setChatMessages(data || []);
+                }
+            };
+            fetchChat();
+        }
+    }, [session, sessionId]);
+
+    // Listen for real-time session updates (e.g., status change to 'live')
+    useEffect(() => {
+        if (!session || !activeUser) return;
+
+        const channel = supabase.channel(`session-details-${session.id}`)
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'sessions',
+                filter: `id=eq.${session.id}`
+            }, (payload) => {
+                const updatedSession = payload.new as Session;
+                // Update global state to ensure UI consistency across the app
+                updateSessionInState({ ...session, ...updatedSession });
+                
+                // If another host/manager starts the session, redirect this user to the live page
+                if (updatedSession.status === 'live') {
+                    sessionStorage.setItem('workshop_session_user', JSON.stringify({
+                        id: activeUser.id,
+                        name: activeUser.name,
+                        email: activeUser.email,
+                        role: activeUser.role,
+                    }));
+                    navigate(`/session/${session.id}/live`);
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [session, activeUser, updateSessionInState, navigate]);
+    
     if (isLoading || !workshop || !session) {
         return <div className="p-10 text-center">Loading session...</div>;
     }
@@ -83,21 +133,6 @@ const SessionDetailPage: React.FC = () => {
     }
     
     const shareableLink = `${window.location.origin}${window.location.pathname.split('#')[0]}#/session/${session.id}/join`;
-    
-    const getActiveUser = (): CurrentUser | null => {
-        if (currentUser?.role === 'manager') return currentUser;
-        const storedHostSession = sessionStorage.getItem('host_session');
-        if (storedHostSession) {
-            try {
-                return JSON.parse(storedHostSession);
-            } catch (e) {
-                return null;
-            }
-        }
-        return null;
-    };
-    const activeUser = getActiveUser();
-
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { id, value } = e.target;
@@ -208,6 +243,9 @@ const SessionDetailPage: React.FC = () => {
                              <button onClick={() => setActiveTab('reflection')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'reflection' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
                                 Host Reflection
                             </button>
+                            <button onClick={() => setActiveTab('chat')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'chat' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
+                                Chat History
+                            </button>
                         </>
                     )}
                 </nav>
@@ -310,6 +348,16 @@ const SessionDetailPage: React.FC = () => {
                          <p className="text-gray-500">No reflection was submitted for this session.</p>
                       </div>
                  )}
+                 {activeTab === 'chat' && session.status === 'ended' && activeUser && (
+                    <div className="h-[60vh]">
+                        <ChatPanel 
+                            chat={chatMessages}
+                            currentUser={activeUser}
+                            onSend={() => {}} // onSend is a no-op in read-only mode
+                            isReadOnly={true}
+                        />
+                    </div>
+                )}
             </div>
         </div>
     );

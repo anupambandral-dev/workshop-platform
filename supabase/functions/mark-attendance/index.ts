@@ -77,19 +77,39 @@ serve(async (req: Request) => {
     console.log(`[mark-attendance] Step 2 SUCCESS: Found participant_id: ${participant_id}`);
 
     console.log('[mark-attendance] Step 3: Updating attendance record...');
-    const { error: updateError } = await supabaseAdmin
+    const { data: updatedRecord, error: updateError } = await supabaseAdmin
       .from('session_participant_records')
       .update({ attendance: 'present' })
       .eq('session_id', sessionId)
-      .eq('participant_id', participant_id);
+      .eq('participant_id', participant_id)
+      .select()
+      .single();
 
-    if (updateError) {
+    if (updateError || !updatedRecord) {
       console.error('[mark-attendance] Step 3 FAILED: Could not update attendance record:', updateError);
       throw new Error('Failed to update attendance record.');
     }
     console.log(`[mark-attendance] Step 3 SUCCESS: Marked attendance for ${email} in session ${sessionId}`);
     
-    return new Response(JSON.stringify({ success: true }), {
+    // NEW Step 4: Broadcast the update directly to listening clients.
+    // This is more reliable than relying on RLS-gated database webhooks.
+    console.log('[mark-attendance] Step 4: Broadcasting attendance update...');
+    const channel = supabaseAdmin.channel(`session_${sessionId}`);
+    const broadcastStatus = await channel.send({
+      type: 'broadcast',
+      event: 'attendance_update',
+      payload: { newRecord: updatedRecord },
+    });
+
+    if (broadcastStatus !== 'ok') {
+        // Log an error if broadcast fails, but don't fail the whole function
+        console.error(`[mark-attendance] Step 4 WARNING: Failed to broadcast update. Status: ${broadcastStatus}`);
+    } else {
+        console.log('[mark-attendance] Step 4 SUCCESS: Broadcast sent.');
+    }
+    await supabaseAdmin.removeChannel(channel);
+
+    return new Response(JSON.stringify({ success: true, updatedRecord }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     });
