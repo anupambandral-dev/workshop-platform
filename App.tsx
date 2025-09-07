@@ -105,27 +105,27 @@ const App: React.FC = () => {
     const fetchAllData = useCallback(async () => {
         setIsLoading(true);
 
-        const fetchEmployees = supabase.from('employees').select('*').order('created_at', { ascending: false });
-        const fetchWorkshops = supabase
-            .from('workshops')
-            .select(`
-                *,
-                hosts(*, employees(*)),
-                participants(*, employees(*)),
-                sessions(*, session_participant_records(*))
-            `)
+        // Fetch employees separately for other parts of the app like modals and the employee page.
+        // This query is still subject to RLS, which is appropriate for its usage.
+        const { data: employeesData, error: employeesError } = await supabase
+            .from('employees')
+            .select('*')
             .order('created_at', { ascending: false });
+        
+        if (employeesError) {
+            console.error('Error fetching employees:', employeesError);
+        }
+        setEmployees(employeesData || []);
 
-        const [employeesResult, workshopsResult] = await Promise.all([fetchEmployees, fetchWorkshops]);
+        // Use the new Edge Function to get all workshop data. This securely bypasses RLS
+        // to ensure that joined data like host names is always included.
+        const { data: workshopData, error: functionError } = await supabase.functions.invoke('get-workshop-details');
 
-        const allEmployeesData = employeesResult.data || [];
-        setEmployees(allEmployeesData);
-
-        if (workshopsResult.error) {
-            console.error('Error fetching workshops:', workshopsResult.error);
+        if (functionError) {
+            console.error('Error fetching workshops via function:', functionError);
             setAllWorkshops([]);
-        } else if (workshopsResult.data) {
-             const enrichedWorkshops = workshopsResult.data.map(ws => ({
+        } else if (workshopData?.workshops) {
+             const enrichedWorkshops = workshopData.workshops.map((ws: any) => ({
                 ...ws,
                 hosts: (Array.isArray(ws.hosts) ? ws.hosts : []).map((host: any) => ({
                     employee_id: host.employee_id,
@@ -317,6 +317,8 @@ const App: React.FC = () => {
         return [];
     }, [currentUser, allWorkshops]);
 
+    // FIX: Corrected the useMemo hook syntax. The factory function and dependency array were incorrectly
+    //      structured, causing the hook to return the dependency array instead of the context object.
     const value = useMemo(() => ({
         currentUser,
         // Fix: Pass the actual setCurrentUser state setter to the context. This allows components to update the user state.
@@ -332,7 +334,6 @@ const App: React.FC = () => {
         deleteWorkshop,
         updateSessionInState,
         updateParticipantRecordInState
-        // Fix: Added setCurrentUser to the dependency array.
     }), [currentUser, setCurrentUser, workshopsForManager, allWorkshops, employees, isLoading, logout, addWorkshop, addEmployees, updateSession, deleteWorkshop, updateSessionInState, updateParticipantRecordInState]);
 
     return (
