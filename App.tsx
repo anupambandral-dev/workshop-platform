@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useCallback, useEffect, createContext } from 'react';
 import { HashRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { supabase } from './services/supabase';
@@ -109,7 +110,7 @@ const App: React.FC = () => {
             .from('workshops')
             .select(`
                 *,
-                hosts(employee_id, email),
+                hosts(*, employees(*)),
                 participants(*, employees(*)),
                 sessions(*, session_participant_records(*))
             `)
@@ -126,14 +127,11 @@ const App: React.FC = () => {
         } else if (workshopsResult.data) {
              const enrichedWorkshops = workshopsResult.data.map(ws => ({
                 ...ws,
-                hosts: (Array.isArray(ws.hosts) ? ws.hosts : []).map((host: any) => {
-                    const employee = allEmployeesData.find(emp => emp.id === host.employee_id);
-                    return {
-                        employee_id: host.employee_id,
-                        name: employee?.name || 'Unknown Host',
-                        email: host.email || employee?.email || 'No email'
-                    };
-                }),
+                hosts: (Array.isArray(ws.hosts) ? ws.hosts : []).map((host: any) => ({
+                    employee_id: host.employee_id,
+                    name: host.employees?.name || 'Unknown Host',
+                    email: host.employees?.email || host.email || 'No email',
+                })),
                 participants: (Array.isArray(ws.participants) ? ws.participants : []).map((p: any) => ({
                     id: p.id, workshop_id: p.workshop_id, employee_id: p.employee_id,
                     name: p.employees?.name || p.name || 'Unknown Participant', 
