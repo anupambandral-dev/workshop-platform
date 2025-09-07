@@ -17,7 +17,8 @@ const JoinSessionPage: React.FC = () => {
     const [view, setView] = useState<'email_input' | 'status_view'>('email_input');
     const [identifiedParticipant, setIdentifiedParticipant] = useState<{ workshop: Workshop, session: SessionWithRecords, participant: Participant, record: SessionParticipantRecord } | null>(null);
 
-    const intervalRef = useRef<number | null>(null);
+    // FIX: Changed type from `number` to `ReturnType<typeof setInterval>` to correctly handle the return type of `setInterval`, which may be `NodeJS.Timeout` if Node types are present in the project.
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const { workshop, session } = useMemo(() => {
         if (!sessionId || allWorkshops.length === 0) {
