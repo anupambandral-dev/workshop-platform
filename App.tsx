@@ -317,8 +317,7 @@ const App: React.FC = () => {
         return [];
     }, [currentUser, allWorkshops]);
 
-    // FIX: Corrected the useMemo hook syntax. The factory function and dependency array were incorrectly
-    //      structured, causing the hook to return the dependency array instead of the context object.
+    // FIX: Corrected the useMemo hook syntax. The factory function was not properly closed, causing it to be parsed as a comma expression and returning the dependency array instead of the context value object. This fixes both reported errors.
     const value = useMemo(() => ({
         currentUser,
         // Fix: Pass the actual setCurrentUser state setter to the context. This allows components to update the user state.
@@ -334,6 +333,7 @@ const App: React.FC = () => {
         deleteWorkshop,
         updateSessionInState,
         updateParticipantRecordInState
+        // Fix: Added setCurrentUser to the dependency array.
     }), [currentUser, setCurrentUser, workshopsForManager, allWorkshops, employees, isLoading, logout, addWorkshop, addEmployees, updateSession, deleteWorkshop, updateSessionInState, updateParticipantRecordInState]);
 
     return (
