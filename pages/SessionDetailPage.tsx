@@ -63,9 +63,10 @@ const SessionDetailPage: React.FC = () => {
         end_time: '',
     });
     const [isSaving, setIsSaving] = useState(false);
+    const [initialTabSet, setInitialTabSet] = useState(false);
 
     useEffect(() => {
-        if (session) {
+        if (session && !initialTabSet) {
             setFormData({
                 title: session.title,
                 date: session.date,
@@ -73,8 +74,9 @@ const SessionDetailPage: React.FC = () => {
                 end_time: session.end_time,
             });
             setActiveTab(session.status === 'ended' ? 'attendance' : 'details');
+            setInitialTabSet(true);
         }
-    }, [session]);
+    }, [session, initialTabSet]);
     
     // Fetch chat history for ended sessions
     useEffect(() => {
@@ -91,9 +93,9 @@ const SessionDetailPage: React.FC = () => {
         }
     }, [session, sessionId]);
 
-    // Listen for real-time session updates (e.g., status change to 'live')
+    // Listen for real-time session updates to sync state
     useEffect(() => {
-        if (!session || !activeUser) return;
+        if (!session) return;
 
         const channel = supabase.channel(`session-details-${session.id}`)
             .on('postgres_changes', {
@@ -103,26 +105,29 @@ const SessionDetailPage: React.FC = () => {
                 filter: `id=eq.${session.id}`
             }, (payload) => {
                 const updatedSession = payload.new as Session;
-                // Update global state to ensure UI consistency across the app
+                // The subscription's only job is to update the global state.
                 updateSessionInState({ ...session, ...updatedSession });
-                
-                // If another host/manager starts the session, redirect this user to the live page
-                if (updatedSession.status === 'live') {
-                    sessionStorage.setItem('workshop_session_user', JSON.stringify({
-                        id: activeUser.id,
-                        name: activeUser.name,
-                        email: activeUser.email,
-                        role: activeUser.role,
-                    }));
-                    navigate(`/session/${session.id}/live`);
-                }
             })
             .subscribe();
 
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [session, activeUser, updateSessionInState, navigate]);
+    }, [session, updateSessionInState]);
+
+    // React to session status changes to handle redirection
+    useEffect(() => {
+        if (session?.status === 'live' && activeUser) {
+            // A user is on this page and the session just went live. Redirect them.
+            sessionStorage.setItem('workshop_session_user', JSON.stringify({
+                id: activeUser.id,
+                name: activeUser.name,
+                email: activeUser.email,
+                role: activeUser.role,
+            }));
+            navigate(`/session/${session.id}/live`, { replace: true });
+        }
+    }, [session?.status, activeUser, navigate, session?.id]);
     
     if (isLoading || !workshop || !session) {
         return <div className="p-10 text-center">Loading session...</div>;
@@ -169,13 +174,7 @@ const SessionDetailPage: React.FC = () => {
             }
 
             await updateSession({ ...session, status: 'live' });
-            sessionStorage.setItem('workshop_session_user', JSON.stringify({
-                 id: activeUser.id,
-                 name: activeUser.name,
-                 email: activeUser.email,
-                 role: activeUser.role,
-            }));
-            navigate(`/session/${session.id}/live`);
+            // The navigation will now be handled by the useEffect that listens for status changes
         }
     };
 
