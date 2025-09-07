@@ -1,4 +1,4 @@
-// FIX: Import Dispatch and SetStateAction types from React to correctly type the setCurrentUser function.
+// FIX: Import Dispatch and SetStateAction from React to correctly type the setCurrentUser function.
 import type { Dispatch, SetStateAction } from 'react';
 
 // Types for the application, designed to work with Supabase
@@ -110,7 +110,7 @@ export interface CurrentUser {
 
 export interface AppContextType {
   currentUser: CurrentUser | null;
-  // FIX: Changed type to match the state setter from React.useState for better type safety.
+  // FIX: Updated type to `Dispatch<SetStateAction<...>>` to correctly match the hook's state setter for type safety.
   setCurrentUser: Dispatch<SetStateAction<CurrentUser | null>>;
   workshops: Workshop[]; // For manager dashboard
   allWorkshops: Workshop[]; // For public pages
