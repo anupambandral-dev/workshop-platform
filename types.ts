@@ -110,7 +110,6 @@ export interface CurrentUser {
 
 export interface AppContextType {
   currentUser: CurrentUser | null;
-  // FIX: Updated type to `Dispatch<SetStateAction<...>>` to correctly match the hook's state setter for type safety.
   setCurrentUser: Dispatch<SetStateAction<CurrentUser | null>>;
   workshops: Workshop[]; // For manager dashboard
   allWorkshops: Workshop[]; // For public pages
@@ -129,6 +128,7 @@ export interface AppContextType {
   deleteWorkshop: (workshopId: string) => Promise<void>;
   updateSessionInState: (updatedSession: SessionWithRecords) => void;
   updateParticipantRecordInState: (updatedRecord: SessionParticipantRecord) => void;
+  addParticipantToWorkshop: (workshopId: string, employee: Employee) => Promise<void>;
 }
 
 // --- Supabase generated types replacement ---
