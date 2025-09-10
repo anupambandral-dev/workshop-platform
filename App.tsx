@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo, useCallback, useEffect, createContext } from 'react';
 import { HashRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { supabase } from './services/supabase';
@@ -312,12 +311,58 @@ const App: React.FC = () => {
         }));
     }, []);
     
+    const addParticipantToWorkshop = useCallback(async (workshopId: string, employee: Employee) => {
+        if (!currentUser || currentUser.role !== 'manager') {
+            throw new Error("User must be a manager to add participants.");
+        }
+
+        const { data: newParticipant, error: participantError } = await supabase
+            .from('participants')
+            .insert({
+                workshop_id: workshopId,
+                employee_id: employee.id,
+                name: employee.name,
+                email: employee.email,
+            })
+            .select()
+            .single();
+
+        if (participantError || !newParticipant) {
+            throw new Error(participantError?.message || "Failed to add participant.");
+        }
+
+        const workshop = allWorkshops.find(ws => ws.id === workshopId);
+        if (!workshop) {
+            throw new Error("Workshop not found in current state.");
+        }
+        const sessions = workshop.sessions;
+
+        if (sessions.length > 0) {
+            const recordsToCreate: Array<Database['public']['Tables']['session_participant_records']['Insert']> = sessions.map(session => ({
+                session_id: session.id,
+                participant_id: newParticipant.id,
+                attendance: 'pending' as const
+            }));
+
+            const { error: recordsError } = await supabase
+                .from('session_participant_records')
+                .insert(recordsToCreate);
+
+            if (recordsError) {
+                await supabase.from('participants').delete().eq('id', newParticipant.id);
+                throw new Error(recordsError.message);
+            }
+        }
+        await fetchAllData();
+    }, [currentUser, allWorkshops, fetchAllData]);
+    
     const workshopsForManager = useMemo(() => {
         if (currentUser?.role === 'manager') return allWorkshops;
         return [];
     }, [currentUser, allWorkshops]);
 
-    // FIX: Corrected the useMemo hook syntax. The factory function was not properly closed, causing it to be parsed as a comma expression and returning the dependency array instead of the context value object. This fixes both reported errors.
+    // FIX: Corrected the useMemo hook syntax. The factory function and dependency array were incorrectly
+    //      structured, causing the hook to return the dependency array instead of the context object.
     const value = useMemo(() => ({
         currentUser,
         // Fix: Pass the actual setCurrentUser state setter to the context. This allows components to update the user state.
@@ -332,9 +377,9 @@ const App: React.FC = () => {
         updateSession,
         deleteWorkshop,
         updateSessionInState,
-        updateParticipantRecordInState
-        // Fix: Added setCurrentUser to the dependency array.
-    }), [currentUser, setCurrentUser, workshopsForManager, allWorkshops, employees, isLoading, logout, addWorkshop, addEmployees, updateSession, deleteWorkshop, updateSessionInState, updateParticipantRecordInState]);
+        updateParticipantRecordInState,
+        addParticipantToWorkshop
+    }), [currentUser, setCurrentUser, workshopsForManager, allWorkshops, employees, isLoading, logout, addWorkshop, addEmployees, updateSession, deleteWorkshop, updateSessionInState, updateParticipantRecordInState, addParticipantToWorkshop]);
 
     return (
         <AppContext.Provider value={value}>
