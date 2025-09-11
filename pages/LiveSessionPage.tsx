@@ -115,7 +115,7 @@ const HostReflectionModal: React.FC<{
                     </div>
                     <div className="p-4 bg-gray-50 flex justify-end space-x-3">
                         <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50">Cancel</button>
-                        <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md shadow-sm hover:bg-primary-700">Save & End Session</button>
+                        <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md shadow-sm hover:bg-primary-700">Submit Reflection</button>
                     </div>
                 </form>
             </div>
@@ -272,19 +272,38 @@ const LiveSessionPage: React.FC = () => {
         if (error) console.error("Error sending message:", error);
     };
 
-    const handleSaveReflection = async (reflection: HostReflection) => {
+    const handleEndSession = async () => {
         if (!session) return;
         try {
+            // Immediately update the session status to 'ended' for participants.
+            // The host reflection can be added later.
             await updateSession({
                 ...session,
                 status: 'ended',
+            });
+            // Then, open the reflection modal for the host to fill out.
+            setIsReflectionModalOpen(true);
+        } catch (error: any) {
+            console.error("Failed to end session:", error);
+            alert(`Error: Could not end session. Please try again. Details: ${error.message}`);
+        }
+    };
+
+    const handleSaveReflection = async (reflection: HostReflection) => {
+        if (!session) return;
+        try {
+            // The session is already marked as 'ended'. This function now only saves the reflection data.
+            await updateSession({
+                ...session,
                 host_reflection: reflection,
             });
             setIsReflectionModalOpen(false);
-            setPageState('ended');
+            // The page state is already 'ended' due to the real-time subscription,
+            // so no need to call setPageState('ended'). The component will re-render
+            // with the updated session data from the context.
         } catch (error: any) {
-            console.error("Failed to save reflection and end session:", error);
-            alert(`Error: Could not end session. Please try again. Details: ${error.message}`);
+            console.error("Failed to save reflection:", error);
+            alert(`Error: Could not save reflection. Please try again. Details: ${error.message}`);
         }
     };
 
@@ -365,7 +384,7 @@ const LiveSessionPage: React.FC = () => {
                 </div>
                 {isHost && (
                     <button
-                        onClick={() => setIsReflectionModalOpen(true)}
+                        onClick={handleEndSession}
                         className="px-5 py-3 font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                     >
                         End Session
