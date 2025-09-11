@@ -1,12 +1,99 @@
 import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
-import { AppContextType, CurrentUser, Session, ChatMessage } from '../types';
+import { AppContextType, CurrentUser, Session, ChatMessage, HostReflection, Participant, SessionWithRecords } from '../types';
 import { CalendarIcon, ClockIcon, ClipboardIcon } from '../components/Icons';
 import { supabase } from '../services/supabase';
 import ChatPanel from '../components/ChatPanel';
 
 type Tab = 'details' | 'go-live' | 'attendance' | 'reflection' | 'chat';
+
+const HostReflectionForm: React.FC<{
+    participants: Participant[];
+    onSubmit: (reflection: HostReflection) => Promise<void>;
+}> = ({ participants, onSubmit }) => {
+    const [proactiveParticipantId, setProactiveParticipantId] = useState(participants[0]?.id || '');
+    const [lessEngagedParticipantId, setLessEngagedParticipantId] = useState(participants[0]?.id || '');
+    const [ahaMoment, setAhaMoment] = useState('');
+    const [biggestChallenge, setBiggestChallenge] = useState('');
+    const [overallSuccess, setOverallSuccess] = useState(3);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const proactiveParticipant = participants.find(p => p.id === proactiveParticipantId);
+        const lessEngagedParticipant = participants.find(p => p.id === lessEngagedParticipantId);
+
+        if (!proactiveParticipant || !lessEngagedParticipant) {
+            alert("Please select participants for evaluation.");
+            return;
+        }
+
+        setIsSubmitting(true);
+        await onSubmit({
+            proactiveParticipantId,
+            proactiveParticipantName: proactiveParticipant.name,
+            lessEngagedParticipantId,
+            lessEngagedParticipantName: lessEngagedParticipant.name,
+            ahaMoment,
+            biggestChallenge,
+            overallSuccess,
+        });
+        setIsSubmitting(false);
+    };
+
+    if (participants.length === 0) {
+        return (
+            <div className="bg-white p-6 rounded-lg shadow-md border text-center">
+                <h3 className="text-xl font-bold mb-2">Submit Host Reflection</h3>
+                <p className="text-gray-500">There were no participants in this session to evaluate.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="bg-white p-6 rounded-lg shadow-md border">
+            <h3 className="text-xl font-bold text-gray-900 mb-1">Submit Host Reflection</h3>
+            <p className="text-sm text-gray-600 mb-6">Please provide your insights from the session.</p>
+            <form onSubmit={handleSubmit} className="space-y-6">
+                 <div>
+                    <label htmlFor="proactive" className="block text-sm font-medium text-gray-700">Who was the most proactive participant?</label>
+                    <select id="proactive" value={proactiveParticipantId} onChange={e => setProactiveParticipantId(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
+                        {participants.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                </div>
+                 <div>
+                    <label htmlFor="lessEngaged" className="block text-sm font-medium text-gray-700">Who seemed the least engaged?</label>
+                    <select id="lessEngaged" value={lessEngagedParticipantId} onChange={e => setLessEngagedParticipantId(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
+                        {participants.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                </div>
+                <div>
+                    <label htmlFor="ahaMoment" className="block text-sm font-medium text-gray-700">What was the most significant "aha moment"?</label>
+                    <textarea id="ahaMoment" value={ahaMoment} onChange={e => setAhaMoment(e.target.value)} rows={3} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" required />
+                </div>
+                <div>
+                    <label htmlFor="challenge" className="block text-sm font-medium text-gray-700">What was the biggest challenge you faced?</label>
+                    <textarea id="challenge" value={biggestChallenge} onChange={e => setBiggestChallenge(e.target.value)} rows={3} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" required />
+                </div>
+                 <div>
+                    <label className="block text-sm font-medium text-gray-700">How would you rate the overall success of the session?</label>
+                    <div className="flex items-center space-x-4 mt-2">
+                        <span className="text-sm text-gray-500">1</span>
+                        <input type="range" min="1" max="5" value={overallSuccess} onChange={(e) => setOverallSuccess(parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" />
+                        <span className="text-sm text-gray-500">5</span>
+                        <span className="font-bold text-primary w-4 text-center">{overallSuccess}</span>
+                    </div>
+                </div>
+                <div className="flex justify-end pt-4">
+                     <button type="submit" disabled={isSubmitting} className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md shadow-sm hover:bg-primary-700 disabled:bg-primary-300">
+                        {isSubmitting ? 'Submitting...' : 'Submit Reflection'}
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+};
 
 const SessionDetailPage: React.FC = () => {
     const { workshopId, sessionId } = useParams<{ workshopId: string, sessionId: string }>();
@@ -178,6 +265,20 @@ const SessionDetailPage: React.FC = () => {
         }
     };
 
+    const handleSubmitReflection = async (reflection: HostReflection) => {
+        if (!session) return;
+        try {
+            await updateSession({
+                ...session,
+                host_reflection: reflection,
+            });
+            alert('Reflection submitted successfully!');
+        } catch (error: any) {
+            console.error("Failed to save reflection:", error);
+            alert(`Error: Could not save reflection. Details: ${error.message}`);
+        }
+    };
+
     return (
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div className="mb-6">
@@ -314,39 +415,40 @@ const SessionDetailPage: React.FC = () => {
                         </ul>
                     </div>
                 )}
-                {activeTab === 'reflection' && session.host_reflection && (
-                    <div className="bg-white p-6 rounded-lg shadow-md border">
-                        <h3 className="text-xl font-bold mb-4">Host Reflection Summary</h3>
-                        <dl className="space-y-4">
-                            <div>
-                                <dt className="text-sm font-medium text-gray-500">Most proactive participant</dt>
-                                <dd className="mt-1 text-md text-gray-900">{session.host_reflection.proactiveParticipantName}</dd>
-                            </div>
-                            <div>
-                                <dt className="text-sm font-medium text-gray-500">Least engaged participant</dt>
-                                <dd className="mt-1 text-md text-gray-900">{session.host_reflection.lessEngagedParticipantName}</dd>
-                            </div>
-                            <div>
-                                <dt className="text-sm font-medium text-gray-500">Most significant "aha moment"</dt>
-                                <dd className="mt-1 text-md text-gray-900 whitespace-pre-wrap">{session.host_reflection.ahaMoment}</dd>
-                            </div>
-                            <div>
-                                <dt className="text-sm font-medium text-gray-500">Biggest challenge</dt>
-                                <dd className="mt-1 text-md text-gray-900 whitespace-pre-wrap">{session.host_reflection.biggestChallenge}</dd>
-                            </div>
-                             <div>
-                                <dt className="text-sm font-medium text-gray-500">Overall success rating</dt>
-                                <dd className="mt-1 text-md text-gray-900">{session.host_reflection.overallSuccess} / 5</dd>
-                            </div>
-                        </dl>
-                    </div>
+                {activeTab === 'reflection' && (
+                    session.host_reflection ? (
+                        <div className="bg-white p-6 rounded-lg shadow-md border">
+                            <h3 className="text-xl font-bold mb-4">Host Reflection Summary</h3>
+                            <dl className="space-y-4">
+                                <div>
+                                    <dt className="text-sm font-medium text-gray-500">Most proactive participant</dt>
+                                    <dd className="mt-1 text-md text-gray-900">{session.host_reflection.proactiveParticipantName}</dd>
+                                </div>
+                                <div>
+                                    <dt className="text-sm font-medium text-gray-500">Least engaged participant</dt>
+                                    <dd className="mt-1 text-md text-gray-900">{session.host_reflection.lessEngagedParticipantName}</dd>
+                                </div>
+                                <div>
+                                    <dt className="text-sm font-medium text-gray-500">Most significant "aha moment"</dt>
+                                    <dd className="mt-1 text-md text-gray-900 whitespace-pre-wrap">{session.host_reflection.ahaMoment}</dd>
+                                </div>
+                                <div>
+                                    <dt className="text-sm font-medium text-gray-500">Biggest challenge</dt>
+                                    <dd className="mt-1 text-md text-gray-900 whitespace-pre-wrap">{session.host_reflection.biggestChallenge}</dd>
+                                </div>
+                                <div>
+                                    <dt className="text-sm font-medium text-gray-500">Overall success rating</dt>
+                                    <dd className="mt-1 text-md text-gray-900">{session.host_reflection.overallSuccess} / 5</dd>
+                                </div>
+                            </dl>
+                        </div>
+                    ) : (
+                        <HostReflectionForm
+                            participants={workshop.participants}
+                            onSubmit={handleSubmitReflection}
+                        />
+                    )
                 )}
-                 {activeTab === 'reflection' && !session.host_reflection && (
-                      <div className="bg-white p-6 rounded-lg shadow-md border text-center">
-                         <h3 className="text-xl font-bold mb-4">Host Reflection</h3>
-                         <p className="text-gray-500">No reflection was submitted for this session.</p>
-                      </div>
-                 )}
                  {activeTab === 'chat' && session.status === 'ended' && activeUser && (
                     <div className="h-[60vh]">
                         <ChatPanel 
