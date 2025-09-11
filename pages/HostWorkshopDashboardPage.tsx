@@ -18,10 +18,11 @@ const HostWorkshopDashboardPage: React.FC = () => {
         return <div className="p-10 text-center">Loading workshop details...</div>;
     }
     
-    const getStatusChip = (status: 'scheduled' | 'live' | 'ended') => {
+    const getStatusChip = (status: 'scheduled' | 'live' | 'ended' | 'evaluation_pending') => {
         switch (status) {
             case 'scheduled': return 'bg-blue-100 text-blue-800';
             case 'live': return 'bg-green-100 text-green-800 animate-pulse';
+            case 'evaluation_pending': return 'bg-yellow-100 text-yellow-800';
             case 'ended': return 'bg-gray-100 text-gray-800';
             default: return 'bg-gray-100 text-gray-800';
         }
@@ -59,35 +60,42 @@ const HostWorkshopDashboardPage: React.FC = () => {
             <div>
                 <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2 mb-6">Manage Sessions</h2>
                 <div className="space-y-6">
-                    {workshop.sessions.map(session => (
-                        <div 
-                            key={session.id} 
-                            onClick={() => navigate(`/workshop/${workshop.id}/session/${session.id}`)}
-                            className="bg-white p-4 rounded-lg shadow-sm border hover:shadow-md transition-shadow cursor-pointer"
-                        >
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <h3 className="text-lg font-bold text-gray-800">{session.title}</h3>
-                                    <div className="flex items-center text-sm text-gray-500 mt-1 space-x-4">
-                                        <div className="flex items-center">
-                                            <CalendarIcon className="h-4 w-4 mr-1.5" />
-                                            <span>{new Date(session.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</span>
-                                        </div>
-                                        <div className="flex items-center">
-                                            <ClockIcon className="h-4 w-4 mr-1.5" />
-                                            <span>{session.start_time}</span>
+                    {workshop.sessions.map(session => {
+                        const displayStatus = session.status === 'ended' && !session.host_reflection ? 'evaluation_pending' : session.status;
+                        const displayStatusText = displayStatus === 'evaluation_pending'
+                            ? 'Eval. Pending'
+                            : session.status.charAt(0).toUpperCase() + session.status.slice(1);
+                            
+                        return (
+                            <div 
+                                key={session.id} 
+                                onClick={() => navigate(`/workshop/${workshop.id}/session/${session.id}`)}
+                                className="bg-white p-4 rounded-lg shadow-sm border hover:shadow-md transition-shadow cursor-pointer"
+                            >
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <h3 className="text-lg font-bold text-gray-800">{session.title}</h3>
+                                        <div className="flex items-center text-sm text-gray-500 mt-1 space-x-4">
+                                            <div className="flex items-center">
+                                                <CalendarIcon className="h-4 w-4 mr-1.5" />
+                                                <span>{new Date(session.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+                                            </div>
+                                            <div className="flex items-center">
+                                                <ClockIcon className="h-4 w-4 mr-1.5" />
+                                                <span>{session.start_time}</span>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                                <div className="flex items-center space-x-4">
-                                    <span className={`px-3 py-1 text-xs font-semibold rounded-full ${getStatusChip(session.status)}`}>
-                                        {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
-                                    </span>
-                                    <span className="text-gray-400">&rarr;</span>
+                                    <div className="flex items-center space-x-4">
+                                        <span className={`px-3 py-1 text-xs font-semibold rounded-full ${getStatusChip(displayStatus)}`}>
+                                            {displayStatusText}
+                                        </span>
+                                        <span className="text-gray-400">&rarr;</span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
         </div>
