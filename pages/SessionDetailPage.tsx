@@ -359,38 +359,49 @@ const SessionDetailPage: React.FC = () => {
                     </div>
                 );
             case 'reflection':
-                 return session.host_reflection ? (
-                    <div className="bg-white p-6 rounded-lg shadow-md border">
-                        <h3 className="text-xl font-bold text-gray-900 mb-4">Host Reflection Summary</h3>
-                        <div className="space-y-4 text-gray-800">
-                            <div className="p-3 bg-gray-50 rounded-md">
-                                <p className="font-semibold text-gray-600">Most Proactive Participants</p>
-                                <p>{session.host_reflection.proactiveParticipantNames.join(', ')}</p>
-                            </div>
-                            <div className="p-3 bg-gray-50 rounded-md">
-                                <p className="font-semibold text-gray-600">Least Engaged Participants</p>
-                                <p>{session.host_reflection.lessEngagedParticipantNames.join(', ')}</p>
-                            </div>
-                             <div className="p-3 bg-gray-50 rounded-md">
-                                <p className="font-semibold text-gray-600">Significant "Aha Moment"</p>
-                                <p className="whitespace-pre-wrap">{session.host_reflection.ahaMoment}</p>
-                            </div>
-                            <div className="p-3 bg-gray-50 rounded-md">
-                                <p className="font-semibold text-gray-600">Biggest Challenge</p>
-                                <p className="whitespace-pre-wrap">{session.host_reflection.biggestChallenge}</p>
-                            </div>
-                            <div className="p-3 bg-gray-50 rounded-md">
-                                <p className="font-semibold text-gray-600">Overall Success Rating</p>
-                                <p className="flex items-center">
-                                    <span className="text-lg font-bold text-primary mr-2">{session.host_reflection.overallSuccess}</span>
-                                    <span className="text-gray-500">/ 5</span>
-                                </p>
+                if (session.host_reflection) {
+                    // This handles backwards compatibility for reflections saved before the multi-select feature.
+                    const reflectionData = session.host_reflection as any; 
+                    const proactiveDisplay = Array.isArray(reflectionData.proactiveParticipantNames)
+                        ? reflectionData.proactiveParticipantNames.join(', ')
+                        : reflectionData.proactiveParticipantName || 'Not recorded';
+                    
+                    const lessEngagedDisplay = Array.isArray(reflectionData.lessEngagedParticipantNames)
+                        ? reflectionData.lessEngagedParticipantNames.join(', ')
+                        : reflectionData.lessEngagedParticipantName || 'Not recorded';
+
+                    return (
+                        <div className="bg-white p-6 rounded-lg shadow-md border">
+                            <h3 className="text-xl font-bold text-gray-900 mb-4">Host Reflection Summary</h3>
+                            <div className="space-y-4 text-gray-800">
+                                <div className="p-3 bg-gray-50 rounded-md">
+                                    <p className="font-semibold text-gray-600">Most Proactive Participants</p>
+                                    <p>{proactiveDisplay}</p>
+                                </div>
+                                <div className="p-3 bg-gray-50 rounded-md">
+                                    <p className="font-semibold text-gray-600">Least Engaged Participants</p>
+                                    <p>{lessEngagedDisplay}</p>
+                                </div>
+                                <div className="p-3 bg-gray-50 rounded-md">
+                                    <p className="font-semibold text-gray-600">Significant "Aha Moment"</p>
+                                    <p className="whitespace-pre-wrap">{session.host_reflection.ahaMoment}</p>
+                                </div>
+                                <div className="p-3 bg-gray-50 rounded-md">
+                                    <p className="font-semibold text-gray-600">Biggest Challenge</p>
+                                    <p className="whitespace-pre-wrap">{session.host_reflection.biggestChallenge}</p>
+                                </div>
+                                <div className="p-3 bg-gray-50 rounded-md">
+                                    <p className="font-semibold text-gray-600">Overall Success Rating</p>
+                                    <p className="flex items-center">
+                                        <span className="text-lg font-bold text-primary mr-2">{session.host_reflection.overallSuccess}</span>
+                                        <span className="text-gray-500">/ 5</span>
+                                    </p>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                ) : (
-                    <HostReflectionForm participants={workshop.participants} onSubmit={handleSubmitReflection} />
-                );
+                    );
+                }
+                return <HostReflectionForm participants={workshop.participants} onSubmit={handleSubmitReflection} />;
             case 'chat':
                 return <ChatPanel chat={chatMessages} currentUser={activeUser!} onSend={() => {}} isReadOnly={true} />
             default:
