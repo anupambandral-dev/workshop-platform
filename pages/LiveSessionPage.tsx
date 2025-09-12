@@ -47,27 +47,27 @@ const HostReflectionModal: React.FC<{
     onClose: () => void;
     onSubmit: (reflection: HostReflection) => void;
 }> = ({ participants, onClose, onSubmit }) => {
-    const [proactiveParticipantId, setProactiveParticipantId] = useState(participants[0]?.id || '');
-    const [lessEngagedParticipantId, setLessEngagedParticipantId] = useState(participants[0]?.id || '');
+    const [proactiveParticipantIds, setProactiveParticipantIds] = useState<string[]>([]);
+    const [lessEngagedParticipantIds, setLessEngagedParticipantIds] = useState<string[]>([]);
     const [ahaMoment, setAhaMoment] = useState('');
     const [biggestChallenge, setBiggestChallenge] = useState('');
     const [overallSuccess, setOverallSuccess] = useState(3);
     
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const proactiveParticipant = participants.find(p => p.id === proactiveParticipantId);
-        const lessEngagedParticipant = participants.find(p => p.id === lessEngagedParticipantId);
+        const proactiveParticipants = participants.filter(p => proactiveParticipantIds.includes(p.id));
+        const lessEngagedParticipants = participants.filter(p => lessEngagedParticipantIds.includes(p.id));
 
-        if (!proactiveParticipant || !lessEngagedParticipant) {
-            alert("Please select participants.");
+        if (proactiveParticipants.length === 0 || lessEngagedParticipants.length === 0) {
+            alert("Please select at least one participant for each category.");
             return;
         }
 
         onSubmit({
-            proactiveParticipantId,
-            proactiveParticipantName: proactiveParticipant.name,
-            lessEngagedParticipantId,
-            lessEngagedParticipantName: lessEngagedParticipant.name,
+            proactiveParticipantIds,
+            proactiveParticipantNames: proactiveParticipants.map(p => p.name),
+            lessEngagedParticipantIds,
+            lessEngagedParticipantNames: lessEngagedParticipants.map(p => p.name),
             ahaMoment,
             biggestChallenge,
             overallSuccess,
@@ -84,14 +84,16 @@ const HostReflectionModal: React.FC<{
                     </div>
                     <div className="px-6 py-4 space-y-6 border-t border-b">
                         <div>
-                            <label htmlFor="proactive" className="block text-sm font-medium text-gray-700">Who was the most proactive participant?</label>
-                            <select id="proactive" value={proactiveParticipantId} onChange={e => setProactiveParticipantId(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
+                            <label htmlFor="proactive" className="block text-sm font-medium text-gray-700">Who were the most proactive participants?</label>
+                            <p className="text-xs text-gray-500 mb-1">Hold Ctrl (or Cmd on Mac) to select multiple.</p>
+                            <select multiple id="proactive" value={proactiveParticipantIds} onChange={e => setProactiveParticipantIds(Array.from(e.target.selectedOptions, option => option.value))} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
                                 {participants.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                             </select>
                         </div>
                          <div>
                             <label htmlFor="lessEngaged" className="block text-sm font-medium text-gray-700">Who seemed the least engaged?</label>
-                            <select id="lessEngaged" value={lessEngagedParticipantId} onChange={e => setLessEngagedParticipantId(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
+                            <p className="text-xs text-gray-500 mb-1">Hold Ctrl (or Cmd on Mac) to select multiple.</p>
+                            <select multiple id="lessEngaged" value={lessEngagedParticipantIds} onChange={e => setLessEngagedParticipantIds(Array.from(e.target.selectedOptions, option => option.value))} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
                                 {participants.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                             </select>
                         </div>
