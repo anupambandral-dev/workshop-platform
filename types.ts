@@ -35,10 +35,10 @@ export type Feedback = {
 };
 
 export type HostReflection = {
-  proactiveParticipantId: string;
-  proactiveParticipantName: string;
-  lessEngagedParticipantId: string;
-  lessEngagedParticipantName: string;
+  proactiveParticipantIds: string[];
+  proactiveParticipantNames: string[];
+  lessEngagedParticipantIds: string[];
+  lessEngagedParticipantNames: string[];
   ahaMoment: string;
   biggestChallenge: string;
   overallSuccess: number;
