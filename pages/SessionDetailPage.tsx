@@ -12,8 +12,8 @@ const HostReflectionForm: React.FC<{
     participants: Participant[];
     onSubmit: (reflection: HostReflection) => Promise<void>;
 }> = ({ participants, onSubmit }) => {
-    const [proactiveParticipantId, setProactiveParticipantId] = useState(participants[0]?.id || '');
-    const [lessEngagedParticipantId, setLessEngagedParticipantId] = useState(participants[0]?.id || '');
+    const [proactiveParticipantIds, setProactiveParticipantIds] = useState<string[]>([]);
+    const [lessEngagedParticipantIds, setLessEngagedParticipantIds] = useState<string[]>([]);
     const [ahaMoment, setAhaMoment] = useState('');
     const [biggestChallenge, setBiggestChallenge] = useState('');
     const [overallSuccess, setOverallSuccess] = useState(3);
@@ -21,20 +21,20 @@ const HostReflectionForm: React.FC<{
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const proactiveParticipant = participants.find(p => p.id === proactiveParticipantId);
-        const lessEngagedParticipant = participants.find(p => p.id === lessEngagedParticipantId);
+        const proactiveParticipants = participants.filter(p => proactiveParticipantIds.includes(p.id));
+        const lessEngagedParticipants = participants.filter(p => lessEngagedParticipantIds.includes(p.id));
 
-        if (!proactiveParticipant || !lessEngagedParticipant) {
-            alert("Please select participants for evaluation.");
+        if (proactiveParticipants.length === 0 || lessEngagedParticipants.length === 0) {
+            alert("Please select at least one participant for each evaluation category.");
             return;
         }
 
         setIsSubmitting(true);
         await onSubmit({
-            proactiveParticipantId,
-            proactiveParticipantName: proactiveParticipant.name,
-            lessEngagedParticipantId,
-            lessEngagedParticipantName: lessEngagedParticipant.name,
+            proactiveParticipantIds,
+            proactiveParticipantNames: proactiveParticipants.map(p => p.name),
+            lessEngagedParticipantIds,
+            lessEngagedParticipantNames: lessEngagedParticipants.map(p => p.name),
             ahaMoment,
             biggestChallenge,
             overallSuccess,
@@ -57,14 +57,16 @@ const HostReflectionForm: React.FC<{
             <p className="text-sm text-gray-600 mb-6">Please provide your insights from the session.</p>
             <form onSubmit={handleSubmit} className="space-y-6">
                  <div>
-                    <label htmlFor="proactive" className="block text-sm font-medium text-gray-700">Who was the most proactive participant?</label>
-                    <select id="proactive" value={proactiveParticipantId} onChange={e => setProactiveParticipantId(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
+                    <label htmlFor="proactive" className="block text-sm font-medium text-gray-700">Who were the most proactive participants?</label>
+                    <p className="text-xs text-gray-500 mb-1">Hold Ctrl (or Cmd on Mac) to select multiple.</p>
+                    <select multiple id="proactive" value={proactiveParticipantIds} onChange={e => setProactiveParticipantIds(Array.from(e.target.selectedOptions, option => option.value))} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
                         {participants.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
                 </div>
                  <div>
                     <label htmlFor="lessEngaged" className="block text-sm font-medium text-gray-700">Who seemed the least engaged?</label>
-                    <select id="lessEngaged" value={lessEngagedParticipantId} onChange={e => setLessEngagedParticipantId(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
+                    <p className="text-xs text-gray-500 mb-1">Hold Ctrl (or Cmd on Mac) to select multiple.</p>
+                    <select multiple id="lessEngaged" value={lessEngagedParticipantIds} onChange={e => setLessEngagedParticipantIds(Array.from(e.target.selectedOptions, option => option.value))} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
                         {participants.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
                 </div>
@@ -279,6 +281,131 @@ const SessionDetailPage: React.FC = () => {
         }
     };
 
+    const renderTabContent = () => {
+        switch (activeTab) {
+            case 'details':
+                return (
+                    <form onSubmit={handleSaveChanges} className="bg-white p-6 rounded-lg shadow-md border">
+                        <h3 className="text-xl font-bold text-gray-900 mb-6">Session Details</h3>
+                        <div className="space-y-4">
+                            <div>
+                                <label htmlFor="title" className="block text-sm font-medium text-gray-700">Session Title</label>
+                                <input type="text" id="title" value={formData.title} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label htmlFor="date" className="block text-sm font-medium text-gray-700">Date</label>
+                                    <input type="date" id="date" value={formData.date} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
+                                </div>
+                                <div>
+                                    <label htmlFor="start_time" className="block text-sm font-medium text-gray-700">Start Time</label>
+                                    <input type="time" id="start_time" value={formData.start_time} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
+                                </div>
+                                <div>
+                                    <label htmlFor="end_time" className="block text-sm font-medium text-gray-700">End Time</label>
+                                    <input type="time" id="end_time" value={formData.end_time} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="mt-6 flex justify-end">
+                            <button type="submit" disabled={isSaving} className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md shadow-sm hover:bg-primary-700 disabled:bg-primary-300">
+                                {isSaving ? 'Saving...' : 'Save Changes'}
+                            </button>
+                        </div>
+                    </form>
+                );
+            case 'go-live':
+                 return (
+                    <div className="bg-white p-8 rounded-lg shadow-md border text-center">
+                        <h3 className="text-2xl font-bold text-gray-900">Ready to start?</h3>
+                        <p className="mt-2 text-gray-600">
+                           Going live will change the session status and allow participants in the waiting room to join.
+                           This action cannot be undone.
+                        </p>
+                        <div className="mt-6">
+                            <button
+                                onClick={handleGoLive}
+                                className="px-8 py-3 text-lg font-semibold text-white bg-green-600 rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                            >
+                                Go Live Now
+                            </button>
+                        </div>
+                    </div>
+                 );
+            case 'attendance':
+                const presentParticipants = session.session_participant_records.filter(r => r.attendance === 'present');
+                return (
+                    <div className="bg-white rounded-lg shadow-md border">
+                        <div className="p-4 border-b">
+                            <h3 className="text-xl font-bold text-gray-900">Attendance</h3>
+                            <p className="text-sm text-gray-600">{presentParticipants.length} of {workshop.participants.length} participants attended.</p>
+                        </div>
+                        <ul className="divide-y max-h-96 overflow-y-auto">
+                            {workshop.participants.map(p => {
+                                const record = session.session_participant_records.find(r => r.participant_id === p.id);
+                                return (
+                                    <li key={p.id} className="p-3 flex items-center justify-between">
+                                        <div>
+                                            <p className="font-medium">{p.name}</p>
+                                            <p className="text-sm text-gray-500">{p.email}</p>
+                                        </div>
+                                        <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${record?.attendance === 'present' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                                            {record?.attendance === 'present' ? 'Present' : 'Absent'}
+                                        </span>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    </div>
+                );
+            case 'reflection':
+                 return session.host_reflection ? (
+                    <div className="bg-white p-6 rounded-lg shadow-md border">
+                        <h3 className="text-xl font-bold text-gray-900 mb-4">Host Reflection Summary</h3>
+                        <div className="space-y-4 text-gray-800">
+                            <div className="p-3 bg-gray-50 rounded-md">
+                                <p className="font-semibold text-gray-600">Most Proactive Participants</p>
+                                <p>{session.host_reflection.proactiveParticipantNames.join(', ')}</p>
+                            </div>
+                            <div className="p-3 bg-gray-50 rounded-md">
+                                <p className="font-semibold text-gray-600">Least Engaged Participants</p>
+                                <p>{session.host_reflection.lessEngagedParticipantNames.join(', ')}</p>
+                            </div>
+                             <div className="p-3 bg-gray-50 rounded-md">
+                                <p className="font-semibold text-gray-600">Significant "Aha Moment"</p>
+                                <p className="whitespace-pre-wrap">{session.host_reflection.ahaMoment}</p>
+                            </div>
+                            <div className="p-3 bg-gray-50 rounded-md">
+                                <p className="font-semibold text-gray-600">Biggest Challenge</p>
+                                <p className="whitespace-pre-wrap">{session.host_reflection.biggestChallenge}</p>
+                            </div>
+                            <div className="p-3 bg-gray-50 rounded-md">
+                                <p className="font-semibold text-gray-600">Overall Success Rating</p>
+                                <p className="flex items-center">
+                                    <span className="text-lg font-bold text-primary mr-2">{session.host_reflection.overallSuccess}</span>
+                                    <span className="text-gray-500">/ 5</span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <HostReflectionForm participants={workshop.participants} onSubmit={handleSubmitReflection} />
+                );
+            case 'chat':
+                return <ChatPanel chat={chatMessages} currentUser={activeUser!} onSend={() => {}} isReadOnly={true} />
+            default:
+                return null;
+        }
+    };
+
+    const navItems: { id: Tab, label: string, visible: boolean }[] = [
+        { id: 'details', label: 'Details', visible: session.status === 'scheduled' },
+        { id: 'go-live', label: 'Go Live', visible: session.status === 'scheduled' },
+        { id: 'attendance', label: 'Attendance', visible: session.status === 'ended' },
+        { id: 'reflection', label: 'Reflection', visible: session.status === 'ended' },
+        { id: 'chat', label: 'Chat History', visible: session.status === 'ended' && chatMessages.length > 0 },
+    ];
+    
     return (
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div className="mb-6">
@@ -302,163 +429,47 @@ const SessionDetailPage: React.FC = () => {
                 </div>
             </div>
 
-            {session.status !== 'ended' && (
-                <div className="mb-6 p-4 bg-primary-50 border border-primary-200 rounded-lg">
-                    <label htmlFor="share-link" className="block text-sm font-medium text-gray-700 mb-1">Shareable Join Link (for Participants)</label>
-                    <div className="relative">
-                        <input
-                            type="text"
-                            id="share-link"
-                            readOnly
-                            value={shareableLink}
-                            onClick={(e) => {
-                                (e.target as HTMLInputElement).select();
-                                navigator.clipboard.writeText(shareableLink).then(() => alert('Link copied to clipboard!'));
-                            }}
-                            className="block w-full text-sm text-primary-700 bg-white rounded-md border-gray-300 shadow-sm focus:ring-primary focus:border-primary cursor-pointer pr-10"
-                            aria-label="Shareable session join link"
-                        />
-                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                            <ClipboardIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
-                        </div>
+             <div className="mb-6 bg-blue-50 border border-blue-200 p-4 rounded-lg">
+                 <label htmlFor="share-link" className="block text-sm font-medium text-gray-700">Participant Join Link</label>
+                 <div className="relative mt-1">
+                     <input
+                        id="share-link"
+                        type="text"
+                        readOnly
+                        value={shareableLink}
+                        onClick={(e) => {
+                            (e.target as HTMLInputElement).select();
+                            navigator.clipboard.writeText(shareableLink).then(() => alert('Link copied!'));
+                        }}
+                        className="block w-full text-sm text-primary-700 bg-white rounded-md border-gray-300 focus:ring-primary focus:border-primary cursor-pointer pr-10"
+                    />
+                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                        <ClipboardIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
                     </div>
                 </div>
-            )}
+            </div>
 
-            <div className="border-b border-gray-200">
+            <div className="border-b border-gray-200 mb-6">
                 <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-                    <button onClick={() => setActiveTab('details')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'details' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
-                        Details
-                    </button>
-                    {session.status !== 'ended' && (
-                         <button onClick={() => setActiveTab('go-live')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'go-live' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
-                            Go Live
+                    {navItems.filter(item => item.visible).map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`${
+                                activeTab === tab.id
+                                    ? 'border-primary text-primary'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                            aria-current={activeTab === tab.id ? 'page' : undefined}
+                        >
+                            {tab.label}
                         </button>
-                    )}
-                    {session.status === 'ended' && (
-                        <>
-                            <button onClick={() => setActiveTab('attendance')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'attendance' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
-                                Attendance
-                            </button>
-                             <button onClick={() => setActiveTab('reflection')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'reflection' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
-                                Host Reflection
-                            </button>
-                            <button onClick={() => setActiveTab('chat')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'chat' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
-                                Chat History
-                            </button>
-                        </>
-                    )}
+                    ))}
                 </nav>
             </div>
             
-            <div className="mt-8">
-                {activeTab === 'details' && (
-                    <div className="bg-white p-6 rounded-lg shadow-md border">
-                        <h3 className="text-xl font-bold mb-4">Edit Session Details</h3>
-                        <form onSubmit={handleSaveChanges} className="space-y-4">
-                            <div>
-                                <label htmlFor="title" className="block text-sm font-medium text-gray-700">Session Title</label>
-                                <input type="text" id="title" value={formData.title} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
-                            </div>
-                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div>
-                                    <label htmlFor="date" className="block text-sm font-medium text-gray-700">Date</label>
-                                    <input type="date" id="date" value={formData.date} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
-                                </div>
-                                <div>
-                                    <label htmlFor="start_time" className="block text-sm font-medium text-gray-700">Start Time</label>
-                                    <input type="time" id="start_time" value={formData.start_time} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
-                                </div>
-                                <div>
-                                    <label htmlFor="end_time" className="block text-sm font-medium text-gray-700">End Time</label>
-                                    <input type="time" id="end_time" value={formData.end_time} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
-                                </div>
-                            </div>
-                            <div className="flex justify-end">
-                                <button type="submit" disabled={isSaving} className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary-700 disabled:bg-primary-300">
-                                    {isSaving ? 'Saving...' : 'Save Changes'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                )}
-                {activeTab === 'go-live' && (
-                     <div className="bg-white p-8 rounded-lg shadow-md border text-center">
-                        <h3 className="text-2xl font-bold mb-4">Ready to Start?</h3>
-                        <p className="text-gray-600 mb-6">This will mark the session as 'live' and allow participants to join.</p>
-                        <button onClick={handleGoLive} className="px-8 py-4 text-lg font-bold text-white bg-green-600 rounded-md hover:bg-green-700 transition-transform hover:scale-105">
-                            Go Live Now
-                        </button>
-                    </div>
-                )}
-                {activeTab === 'attendance' && (
-                    <div className="bg-white p-6 rounded-lg shadow-md border">
-                        <h3 className="text-xl font-bold mb-4">Attendance Report</h3>
-                         <ul className="divide-y">
-                            {workshop.participants.map(p => {
-                                const record = session.session_participant_records.find(r => r.participant_id === p.id);
-                                const isPresent = record?.attendance === 'present';
-                                return (
-                                    <li key={p.id} className="p-3 flex items-center justify-between">
-                                        <div>
-                                           <p className="font-medium text-gray-800">{p.name}</p>
-                                           <p className="text-sm text-gray-500">{p.email}</p>
-                                        </div>
-                                        {isPresent ? (
-                                            <span className="px-2 py-0.5 text-xs font-medium text-green-800 bg-green-100 rounded-full">Present</span>
-                                        ) : (
-                                            <span className="px-2 py-0.5 text-xs font-medium text-gray-800 bg-gray-100 rounded-full">Absent</span>
-                                        )}
-                                    </li>
-                                );
-                            })}
-                        </ul>
-                    </div>
-                )}
-                {activeTab === 'reflection' && (
-                    session.host_reflection ? (
-                        <div className="bg-white p-6 rounded-lg shadow-md border">
-                            <h3 className="text-xl font-bold mb-4">Host Reflection Summary</h3>
-                            <dl className="space-y-4">
-                                <div>
-                                    <dt className="text-sm font-medium text-gray-500">Most proactive participant</dt>
-                                    <dd className="mt-1 text-md text-gray-900">{session.host_reflection.proactiveParticipantName}</dd>
-                                </div>
-                                <div>
-                                    <dt className="text-sm font-medium text-gray-500">Least engaged participant</dt>
-                                    <dd className="mt-1 text-md text-gray-900">{session.host_reflection.lessEngagedParticipantName}</dd>
-                                </div>
-                                <div>
-                                    <dt className="text-sm font-medium text-gray-500">Most significant "aha moment"</dt>
-                                    <dd className="mt-1 text-md text-gray-900 whitespace-pre-wrap">{session.host_reflection.ahaMoment}</dd>
-                                </div>
-                                <div>
-                                    <dt className="text-sm font-medium text-gray-500">Biggest challenge</dt>
-                                    <dd className="mt-1 text-md text-gray-900 whitespace-pre-wrap">{session.host_reflection.biggestChallenge}</dd>
-                                </div>
-                                <div>
-                                    <dt className="text-sm font-medium text-gray-500">Overall success rating</dt>
-                                    <dd className="mt-1 text-md text-gray-900">{session.host_reflection.overallSuccess} / 5</dd>
-                                </div>
-                            </dl>
-                        </div>
-                    ) : (
-                        <HostReflectionForm
-                            participants={workshop.participants}
-                            onSubmit={handleSubmitReflection}
-                        />
-                    )
-                )}
-                 {activeTab === 'chat' && session.status === 'ended' && activeUser && (
-                    <div className="h-[60vh]">
-                        <ChatPanel 
-                            chat={chatMessages}
-                            currentUser={activeUser}
-                            onSend={() => {}} // onSend is a no-op in read-only mode
-                            isReadOnly={true}
-                        />
-                    </div>
-                )}
+            <div>
+                {renderTabContent()}
             </div>
         </div>
     );
